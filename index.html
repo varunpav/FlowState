@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flow State</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <main class="container">
+      <h1>Flow State</h1>
+      <p id="countdown" class="countdown">--:--</p>
+      <p id="idle" class="idle">idle 0s</p>
+
+      <div class="row">
+        <input id="interval-minutes" type="number" min="1" value="120" />
+        <button id="start-interval" type="button">Set interval (min)</button>
+      </div>
+
+      <div class="row">
+        <button id="fire-in-10s" type="button">Debug: fire in 10s</button>
+      </div>
+
+      <p id="due" class="due" hidden>Hydration reminder is due — confirm below.</p>
+      <div class="row">
+        <button id="confirm" type="button">I drank water</button>
+      </div>
+    </main>
+  </body>
+</html>
