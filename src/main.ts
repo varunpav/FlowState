@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isIdle } from "./core/idlePolicy";
 import { formatCountdown } from "./core/schedule";
 import { confirmHydration, getState, onHydrationDue, onTick, setDeadline } from "./ipc";
 
@@ -18,7 +19,7 @@ function render(remainingMs: number | null, idleSeconds: number) {
     countdownEl.textContent = remainingMs === null ? "--:--" : formatCountdown(remainingMs);
   }
   if (idleEl) {
-    idleEl.textContent = `idle ${idleSeconds}s`;
+    idleEl.textContent = isIdle(idleSeconds) ? `Idle (${idleSeconds}s)` : "Active";
   }
   void getCurrentWindow().setTitle(
     remainingMs === null ? "Flow State" : `${formatCountdown(remainingMs)} — Flow State`,

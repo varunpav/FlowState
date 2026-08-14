@@ -1,0 +1,21 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="drop" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4FA8CB" />
+      <stop offset="100%" stop-color="#1F6E8C" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="225" ry="225" fill="#EFE1C8" />
+
+  <path
+    d="M 512 138
+       C 512 138, 278 470, 278 664
+       C 278 806, 384 918, 512 918
+       C 640 918, 746 806, 746 664
+       C 746 470, 512 138, 512 138 Z"
+    fill="url(#drop)"
+  />
+
+  <ellipse cx="420" cy="560" rx="46" ry="72" fill="#FFFFFF" opacity="0.35" transform="rotate(-18 420 560)" />
+</svg>

@@ -1,11 +1,20 @@
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  --tan-bg: #f5ecda;
+  --tan-surface: #fbf5e8;
+  --tan-border: #e3d3ae;
+  --ink: #37301f;
+  --ink-soft: #6b5f47;
+  --blue: #2c7da0;
+  --blue-dark: #1d5f80;
+  --blue-light: #dcedf3;
+
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif;
   font-size: 16px;
-  line-height: 24px;
+  line-height: 1.5;
   font-weight: 400;
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+  color: var(--ink);
+  background-color: var(--tan-bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -14,9 +23,13 @@
   -webkit-text-size-adjust: 100%;
 }
 
+body {
+  background-color: var(--tan-bg);
+}
+
 .container {
   margin: 0;
-  padding-top: 10vh;
+  padding-top: 8vh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -25,71 +38,89 @@
   gap: 0.5em;
 }
 
-.row {
+.brand {
   display: flex;
-  justify-content: center;
+  align-items: center;
   gap: 0.5em;
+  margin: 0 0 0.25em 0;
+}
+
+.brand img {
+  width: 2em;
+  height: 2em;
 }
 
 h1 {
   text-align: center;
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5em;
 }
 
 .countdown {
   font-size: 3em;
   font-variant-numeric: tabular-nums;
   margin: 0.2em 0;
+  color: var(--blue-dark);
 }
 
 .idle {
-  opacity: 0.6;
+  color: var(--ink-soft);
   margin: 0 0 1em 0;
+  font-size: 0.9em;
 }
 
 .due {
-  color: #396cd8;
+  color: var(--blue-dark);
   font-weight: 600;
+  background: var(--blue-light);
+  border: 1px solid var(--blue);
+  border-radius: 10px;
+  padding: 0.6em 1em;
 }
 
 input,
 button {
   border-radius: 8px;
-  border: 1px solid transparent;
+  border: 1px solid var(--tan-border);
   padding: 0.6em 1.2em;
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
+  color: var(--ink);
+  background-color: var(--tan-surface);
+  transition:
+    border-color 0.2s,
+    background-color 0.2s,
+    color 0.2s;
   outline: none;
 }
 
 button {
   cursor: pointer;
+  color: var(--blue-dark);
+  border-color: var(--blue);
 }
 
 button:hover {
-  border-color: #396cd8;
+  background-color: var(--blue-light);
 }
+
 button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+  background-color: var(--blue);
+  color: var(--tan-surface);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
+button:focus-visible,
+input:focus-visible {
+  border-color: var(--blue-dark);
+  box-shadow: 0 0 0 3px var(--blue-light);
 }

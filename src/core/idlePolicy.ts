@@ -16,3 +16,18 @@ export function decideOnDue(idleSeconds: number, config: IdlePolicyConfig): "fir
 export function shouldResumeDeferred(idleSeconds: number, config: IdlePolicyConfig): boolean {
   return idleSeconds < config.resumeThresholdSeconds;
 }
+
+/**
+ * A short debounce before the UI labels the user "idle" at all — distinct from
+ * (and much shorter than) the defer/resume thresholds above, which govern
+ * whether to hold back the hydration reminder itself. Without this, the idle
+ * status would flip the instant a tick lands with zero input, e.g. mid-read.
+ */
+export const IDLE_DISPLAY_THRESHOLD_SECONDS = 5;
+
+export function isIdle(
+  idleSeconds: number,
+  thresholdSeconds: number = IDLE_DISPLAY_THRESHOLD_SECONDS,
+): boolean {
+  return idleSeconds >= thresholdSeconds;
+}
