@@ -1,6 +1,6 @@
-# Tauri + Vanilla TS
+# Tauri + TypeScript
 
-This template should help get you started developing with Tauri in vanilla HTML, CSS and Typescript.
+This template should help get you started developing with Tauri in basic HTML, CSS and Typescript.
 
 ## Recommended IDE Setup
 
