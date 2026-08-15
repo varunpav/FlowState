@@ -45,10 +45,11 @@ First launch compiles the Rust side, which takes a minute or two; after that, `c
 
 **The window starts hidden in the system tray** (or the overflow "^" area next to it, if Windows tucks new icons away by default) — that's intentional, it's meant to live in the background. Click the tray icon, or the "Flow State" entry in the taskbar, to open it. From there:
 
-- **Set interval (min)** arms the countdown for that many minutes.
-- **Debug: fire in 10s** is a fast-forward button so you can see the full-screen takeover without waiting for a real interval to elapse — useful for trying out the confirm/snooze flow immediately.
-- **Settings** tab lets you adjust the interval, snooze length, max snoozes, and alert volume (with a test-sound button), and persists across restarts.
-- Step away from the keyboard for 30+ seconds and the countdown pauses with a grayed-out "Inactive" overlay until you're back.
+- **Start timer** is a slider on the home page that arms the hydration countdown for that many minutes — drag and release to set it.
+- **Test alert in 10s** is a fast-forward button so you can see a takeover without waiting for a real interval to elapse — useful for trying out the confirm/snooze flow immediately.
+- The home page also shows a **hydration ring and 7-day bar chart** tracking progress toward the daily water goal (default a gallon/128oz), with quick-add buttons to log how much you drank — either from a takeover or anytime from the home page.
+- **Settings** tab has one card per reminder (hydration, Pomodoro, eye break, stand-up) — each with its own enable toggle, interval (or Pomodoro's 25/55 focus + 5/15 break choice), and an "attention grabber" style: full-screen takeover or a quiet system notification. Also covers water bottle size/goal, snooze length, max snoozes, alert volume, and start-with-Windows. Everything persists across restarts.
+- Step away from the keyboard for 30+ seconds and every reminder's countdown pauses (shown with a grayed-out "Paused" overlay) until you're back — except a Pomodoro break in progress, which keeps running, since walking away from the desk *is* the break.
 
 ### Tests
 

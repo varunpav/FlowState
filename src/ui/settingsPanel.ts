@@ -2,12 +2,15 @@ import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import type { ChimeHandle } from "../audio/chime";
 import { parseSettings, type Settings } from "../core/settings";
 import { saveSettings } from "../settingsStore";
+import { mountPomodoroCard, mountReminderCard } from "./reminderCard";
 
 export interface SettingsPanelElements {
+  remindersContainerEl: HTMLElement;
   saveBtn: HTMLButtonElement;
   testSoundBtn: HTMLButtonElement;
   errorEl: HTMLElement;
-  intervalInput: HTMLInputElement;
+  bottleOzInput: HTMLInputElement;
+  dailyGoalOzInput: HTMLInputElement;
   snoozeInput: HTMLInputElement;
   maxSnoozesInput: HTMLInputElement;
   volumeInput: HTMLInputElement;
@@ -29,10 +32,20 @@ export function initSettingsPanel(
   el: SettingsPanelElements,
   settings: Settings,
   chime: ChimeHandle,
-  onSaved: () => void,
+  onSaved: (settings: Settings) => void,
 ): SettingsPanel {
+  const hydrationCard = mountReminderCard(el.remindersContainerEl, "hydration", settings.reminders.hydration);
+  const pomodoroCard = mountPomodoroCard(el.remindersContainerEl, settings.pomodoro);
+  const eyeBreakCard = mountReminderCard(el.remindersContainerEl, "eyeBreak", settings.reminders.eyeBreak);
+  const standUpCard = mountReminderCard(el.remindersContainerEl, "standUp", settings.reminders.standUp);
+
   function refresh() {
-    el.intervalInput.value = String(settings.intervalMs / 60_000);
+    hydrationCard.setValue(settings.reminders.hydration);
+    pomodoroCard.setValue(settings.pomodoro);
+    eyeBreakCard.setValue(settings.reminders.eyeBreak);
+    standUpCard.setValue(settings.reminders.standUp);
+    el.bottleOzInput.value = String(settings.water.bottleOz);
+    el.dailyGoalOzInput.value = String(settings.water.dailyGoalOz);
     el.snoozeInput.value = String(settings.snoozeMs / 60_000);
     el.maxSnoozesInput.value = String(settings.maxSnoozes);
     el.volumeInput.value = String(settings.volume);
@@ -48,7 +61,16 @@ export function initSettingsPanel(
   el.saveBtn.addEventListener("click", () => {
     void (async () => {
       const candidate = {
-        intervalMs: Number(el.intervalInput.value) * 60_000,
+        reminders: {
+          hydration: hydrationCard.getValue(),
+          eyeBreak: eyeBreakCard.getValue(),
+          standUp: standUpCard.getValue(),
+        },
+        pomodoro: pomodoroCard.getValue(),
+        water: {
+          bottleOz: Number(el.bottleOzInput.value),
+          dailyGoalOz: Number(el.dailyGoalOzInput.value),
+        },
         snoozeMs: Number(el.snoozeInput.value) * 60_000,
         maxSnoozes: Number(el.maxSnoozesInput.value),
         volume: Number(el.volumeInput.value),
@@ -70,14 +92,13 @@ export function initSettingsPanel(
       Object.assign(settings, result.value);
       chime.setVolume(settings.volume);
       await saveSettings(settings);
-      onSaved();
+      onSaved(settings);
     })();
   });
 
   el.testSoundBtn.addEventListener("click", () => {
     chime.setVolume(Number(el.volumeInput.value));
-    chime.start();
-    window.setTimeout(() => chime.stop(), 1200);
+    chime.startOnce();
   });
 
   return { refresh };

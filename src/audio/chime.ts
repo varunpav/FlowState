@@ -1,6 +1,8 @@
 export interface ChimeHandle {
   start(): void;
   stop(): void;
+  /** Plays a single note pair immediately, independent of the repeat/loop state. */
+  startOnce(): void;
   setVolume(volume: number): void;
   /** Resumes the AudioContext without scheduling any audible notes. */
   unlock(): void;
@@ -9,6 +11,7 @@ export interface ChimeHandle {
 const NOTE_A5 = 880;
 const NOTE_E5 = 659.25;
 const CHIME_PERIOD_MS = 3000;
+const DEFAULT_REPEATS = 3;
 
 /**
  * A synthesized two-note chime — no binary asset needed, volume is a plain
@@ -21,12 +24,18 @@ const CHIME_PERIOD_MS = 3000;
  * `start()` schedules real notes onto the AudioContext timeline synchronously
  * and `stop()` only prevents the *next* loop iteration, not those already
  * scheduled.
+ *
+ * `start()` plays at most `repeats` times then silences itself — the
+ * takeover overlay stays up regardless (it's the enforcement; the chime is
+ * only the attention-getter), so walking away mid-takeover doesn't mean
+ * returning to indefinite beeping.
  */
-export function createChime(initialVolume: number): ChimeHandle {
+export function createChime(initialVolume: number, repeats: number = DEFAULT_REPEATS): ChimeHandle {
   let ctx: AudioContext | null = null;
   let masterGain: GainNode | null = null;
   let volume = clamp01(initialVolume);
   let timerId: number | null = null;
+  let playsRemaining = 0;
 
   function ensureContext(): { ctx: AudioContext; gain: GainNode } {
     if (!ctx || !masterGain) {
@@ -54,12 +63,17 @@ export function createChime(initialVolume: number): ChimeHandle {
     osc.stop(atTime + duration + 0.05);
   }
 
-  function scheduleLoop() {
+  function playOnce() {
     const { ctx: c, gain } = ensureContext();
     const now = c.currentTime;
     playNote(c, gain, NOTE_A5, now + 0.05, 0.35);
     playNote(c, gain, NOTE_E5, now + 0.33, 0.45);
-    timerId = window.setTimeout(scheduleLoop, CHIME_PERIOD_MS);
+  }
+
+  function scheduleLoop() {
+    playOnce();
+    playsRemaining--;
+    timerId = playsRemaining > 0 ? window.setTimeout(scheduleLoop, CHIME_PERIOD_MS) : null;
   }
 
   return {
@@ -67,6 +81,7 @@ export function createChime(initialVolume: number): ChimeHandle {
       if (timerId !== null) return;
       const { ctx: c } = ensureContext();
       if (c.state === "suspended") void c.resume();
+      playsRemaining = repeats;
       scheduleLoop();
     },
     stop() {
@@ -74,7 +89,13 @@ export function createChime(initialVolume: number): ChimeHandle {
         window.clearTimeout(timerId);
         timerId = null;
       }
+      playsRemaining = 0;
       // Don't close the context — keep it unlocked for the next start().
+    },
+    startOnce() {
+      const { ctx: c } = ensureContext();
+      if (c.state === "suspended") void c.resume();
+      playOnce();
     },
     setVolume(next: number) {
       volume = clamp01(next);

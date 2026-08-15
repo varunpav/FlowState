@@ -7,6 +7,7 @@
   --blue: #2c7da0;
   --blue-dark: #1d5f80;
   --blue-light: #dcedf3;
+  --radius: 16px;
 
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif;
   font-size: 16px;
@@ -101,10 +102,242 @@ h1 {
   color: var(--blue-dark);
 }
 
-.streak-display {
+.card {
+  background: var(--tan-surface);
+  border: 1px solid var(--tan-border);
+  border-radius: var(--radius);
+  padding: 1.2em 1.4em;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.hero {
+  margin: 0.4em 0 0.2em 0;
+}
+
+.hero-label {
+  margin: 0;
   color: var(--ink-soft);
-  font-size: 0.9em;
-  margin: 0 0 1em 0;
+  font-size: 1em;
+}
+
+.hero-countdown {
+  margin: 0.1em 0 0 0;
+  font-size: 2.6em;
+  font-variant-numeric: tabular-nums;
+  color: var(--blue-dark);
+}
+
+.reminder-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5em;
+  margin: 0 0 0.8em 0;
+  min-height: 1.6em;
+}
+
+.reminder-chip {
+  font-size: 0.8em;
+  color: var(--ink-soft);
+  background: var(--blue-light);
+  border-radius: 999px;
+  padding: 0.25em 0.8em;
+  font-variant-numeric: tabular-nums;
+}
+
+.water-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.6em;
+  max-width: 26em;
+}
+
+.water-card-row {
+  display: flex;
+  align-items: center;
+  gap: 1.2em;
+}
+
+.ring-container {
+  position: relative;
+  width: 8.5em;
+  height: 8.5em;
+  flex-shrink: 0;
+}
+
+.ring-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ring-track {
+  fill: none;
+  stroke: var(--blue-light);
+}
+
+.ring-progress {
+  fill: none;
+  stroke: var(--blue);
+  transition: stroke-dashoffset 0.4s ease;
+}
+
+.ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: pre-line;
+  text-align: center;
+  color: var(--blue-dark);
+  font-size: 0.95em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.water-stats {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  min-width: 0;
+}
+
+.bars-container {
+  width: 100%;
+}
+
+.bars-wrap {
+  position: relative;
+  height: 4em;
+}
+
+.bars-goal-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--ink-soft);
+  opacity: 0.4;
+}
+
+.bars-row {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.bars-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+}
+
+.bars-fill {
+  width: 100%;
+  background: var(--blue-light);
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+}
+
+.bars-fill-goal-hit {
+  background: var(--blue);
+}
+
+.bars-letter {
+  font-size: 0.65em;
+  color: var(--ink-soft);
+  margin-top: 0.2em;
+}
+
+.bars-letter-today {
+  color: var(--blue-dark);
+  font-weight: 700;
+}
+
+.water-streak {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--ink-soft);
+}
+
+.water-range-stat {
+  margin: 0;
+  font-size: 0.8em;
+  color: var(--ink-soft);
+  text-align: left;
+}
+
+.water-entry-row {
+  gap: 0.5em;
+  margin: 0.2em 0;
+}
+
+.water-entry-btn {
+  flex: 1;
+}
+
+.water-entry-btn-primary {
+  background-color: var(--blue);
+  color: var(--tan-surface);
+  border-color: var(--blue-dark);
+}
+
+.water-entry-btn-primary:hover {
+  background-color: var(--blue-dark);
+}
+
+.water-entry-custom-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.interval-card {
+  max-width: 26em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+}
+
+.interval-slider-label {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.interval-slider-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--blue-dark);
+  font-weight: 600;
+  min-width: 4.5em;
+  text-align: right;
+}
+
+#hydration-interval-slider {
+  flex: 1;
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: var(--blue);
+}
+
+.ghost-btn {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-soft);
+  font-size: 0.85em;
+  margin-top: 0.4em;
+}
+
+.ghost-btn:hover {
+  background-color: var(--blue-light);
+  color: var(--blue-dark);
 }
 
 .inactive-overlay {
@@ -197,14 +430,15 @@ h1 {
 
 .settings-view {
   margin: 0 auto;
-  max-width: 24em;
-  padding-top: 6vh;
+  max-width: 30em;
+  padding: 6vh 1em 2em 1em;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.8em;
+  gap: 0.7em;
   /* Darker than the page background for stronger contrast/emphasis on this view. */
   color: var(--ink);
+  box-sizing: border-box;
 }
 
 .settings-view[hidden] {
@@ -215,6 +449,61 @@ h1 {
   margin: 0 0 0.2em 0;
   text-align: center;
   color: var(--blue-dark);
+}
+
+.settings-section {
+  background: var(--tan-surface);
+  border: 1px solid var(--tan-border);
+  border-radius: var(--radius);
+  padding: 0.2em 1em;
+}
+
+.settings-section summary {
+  cursor: pointer;
+  padding: 0.7em 0.2em;
+  font-weight: 600;
+  color: var(--blue-dark);
+}
+
+.settings-card {
+  border-top: 1px solid var(--tan-border);
+}
+
+.settings-card:first-child {
+  border-top: none;
+}
+
+.settings-card summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  cursor: pointer;
+  padding: 0.7em 0.2em;
+  font-weight: 600;
+  color: var(--ink);
+  list-style: none;
+}
+
+.settings-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-card-enable {
+  width: auto;
+  accent-color: var(--blue);
+}
+
+.settings-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+  padding: 0 0.2em 1em 0.2em;
+  transition: opacity 0.15s;
+}
+
+.settings-card-body-disabled {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .settings-field {
@@ -244,6 +533,25 @@ h1 {
   color: #a13a3a;
   font-size: 0.85em;
   margin: 0;
+}
+
+.segmented {
+  display: flex;
+  gap: 0.3em;
+}
+
+.segmented button {
+  flex: 1;
+  font-size: 0.85em;
+  padding: 0.5em 0.6em;
+  color: var(--ink-soft);
+  background: var(--tan-bg);
+}
+
+.segmented-active {
+  background-color: var(--blue) !important;
+  color: var(--tan-surface) !important;
+  border-color: var(--blue-dark) !important;
 }
 
 input,

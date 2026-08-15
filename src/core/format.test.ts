@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCountdown } from "./schedule";
+import { formatCountdown } from "./format";
 
 describe("formatCountdown", () => {
   it("formats hours:minutes:seconds when over an hour remains", () => {

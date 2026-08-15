@@ -1,5 +1,5 @@
 import { load } from "@tauri-apps/plugin-store";
-import type { DailyLog } from "./core/streak";
+import { normalizeLog, type DailyLog } from "./core/waterLog";
 
 const STORE_PATH = "log.json";
 const LOG_KEY = "dailyLog";
@@ -10,8 +10,9 @@ async function getStore() {
 
 export async function loadLog(): Promise<DailyLog> {
   const store = await getStore();
-  const raw = await store.get<DailyLog>(LOG_KEY);
-  return raw ?? {};
+  const raw = await store.get(LOG_KEY);
+  // Best-effort, never throws — a corrupt log day must not block startup.
+  return normalizeLog(raw);
 }
 
 export async function saveLog(log: DailyLog): Promise<void> {
@@ -21,8 +22,8 @@ export async function saveLog(log: DailyLog): Promise<void> {
 }
 
 /**
- * `dayKeyOf` (core/streak.ts) stays pure and takes an explicit tz offset for
- * testability; this is the one non-pure call site that reads the host's
+ * `dayKeyOf` (core/waterLog.ts) stays pure and takes an explicit tz offset
+ * for testability; this is the one non-pure call site that reads the host's
  * actual current offset, in `dayKeyOf`'s "UTC+X" sign convention (opposite
  * of `Date.prototype.getTimezoneOffset()`).
  */

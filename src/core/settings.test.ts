@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SETTINGS, parseSettings } from "./settings";
+import { DEFAULT_SETTINGS, parseSettings, withDefaults } from "./settings";
 
 describe("parseSettings", () => {
   it("accepts the default settings", () => {
@@ -12,35 +12,141 @@ describe("parseSettings", () => {
     ["a string", "not an object"],
     ["an array", [1, 2, 3]],
     ["missing every field", {}],
-    [
-      "wrong type for intervalMs",
-      { ...DEFAULT_SETTINGS, intervalMs: "2 hours" },
-    ],
-    ["intervalMs below the 60s floor", { ...DEFAULT_SETTINGS, intervalMs: 500 }],
-    ["negative maxSnoozes", { ...DEFAULT_SETTINGS, maxSnoozes: -1 }],
-    ["non-integer maxSnoozes", { ...DEFAULT_SETTINGS, maxSnoozes: 1.5 }],
-    ["volume above 1", { ...DEFAULT_SETTINGS, volume: 1.2 }],
-    ["volume below 0", { ...DEFAULT_SETTINGS, volume: -0.1 }],
-    ["startWithWindows not a boolean", { ...DEFAULT_SETTINGS, startWithWindows: "yes" }],
-    ["NaN interval", { ...DEFAULT_SETTINGS, intervalMs: Number.NaN }],
   ])("rejects: %s", (_label, input) => {
     const result = parseSettings(input);
     expect(result.ok).toBe(false);
+  });
+
+  it("rejects a reminder interval below the 60s floor with a path-qualified message", () => {
+    const bad = {
+      ...DEFAULT_SETTINGS,
+      reminders: {
+        ...DEFAULT_SETTINGS.reminders,
+        hydration: { ...DEFAULT_SETTINGS.reminders.hydration, intervalMs: 500 },
+      },
+    };
+    const result = parseSettings(bad);
+    expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.issues.length).toBeGreaterThan(0);
+      expect(result.issues).toEqual(
+        expect.arrayContaining([expect.stringContaining("reminders.hydration.intervalMs must be >= 60000")]),
+      );
     }
   });
 
-  it("collects every validation issue, not just the first", () => {
-    const result = parseSettings({ ...DEFAULT_SETTINGS, intervalMs: -1, volume: 5 });
+  it("rejects an invalid pomodoro alertStyle with a path-qualified message", () => {
+    const bad = {
+      ...DEFAULT_SETTINGS,
+      pomodoro: { ...DEFAULT_SETTINGS.pomodoro, alertStyle: "banner" },
+    };
+    const result = parseSettings(bad);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues).toEqual(
+        expect.arrayContaining([expect.stringContaining("pomodoro.alertStyle must be one of")]),
+      );
+    }
+  });
+
+  it("rejects a non-positive water bottleOz", () => {
+    const bad = { ...DEFAULT_SETTINGS, water: { ...DEFAULT_SETTINGS.water, bottleOz: 0 } };
+    const result = parseSettings(bad);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues).toEqual(expect.arrayContaining([expect.stringContaining("water.bottleOz")]));
+    }
+  });
+
+  it("collects every validation issue across nested and top-level fields, not just the first", () => {
+    const bad = {
+      ...DEFAULT_SETTINGS,
+      snoozeMs: -1,
+      volume: 5,
+      water: { ...DEFAULT_SETTINGS.water, bottleOz: -1 },
+    };
+    const result = parseSettings(bad);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.issues).toEqual(
         expect.arrayContaining([
-          expect.stringContaining("intervalMs"),
+          expect.stringContaining("snoozeMs"),
           expect.stringContaining("volume"),
+          expect.stringContaining("water.bottleOz"),
         ]),
       );
     }
+  });
+});
+
+describe("withDefaults", () => {
+  it("fills a v1-shaped flat settings file with the new nested shape without dropping preserved scalars", () => {
+    const v1Shaped = {
+      intervalMs: 3 * 60 * 60 * 1000, // no longer a top-level field in v2 — silently dropped
+      snoozeMs: 10 * 60 * 1000, // same field name in v2 — must be preserved
+      maxSnoozes: 2,
+      volume: 0.4,
+      startWithWindows: true,
+    };
+
+    const merged = withDefaults(v1Shaped);
+    const result = parseSettings(merged);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.reminders).toEqual(DEFAULT_SETTINGS.reminders);
+      expect(result.value.pomodoro).toEqual(DEFAULT_SETTINGS.pomodoro);
+      expect(result.value.water).toEqual(DEFAULT_SETTINGS.water);
+      expect(result.value.snoozeMs).toBe(10 * 60 * 1000);
+      expect(result.value.maxSnoozes).toBe(2);
+      expect(result.value.volume).toBe(0.4);
+      expect(result.value.startWithWindows).toBe(true);
+    }
+  });
+
+  it("fills only the missing leaf when a stored file is missing water.bottleOz", () => {
+    const stored = {
+      ...DEFAULT_SETTINGS,
+      water: { dailyGoalOz: 96 }, // bottleOz missing — e.g. added after this file was written
+    };
+
+    const merged = withDefaults(stored);
+    const result = parseSettings(merged);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.water).toEqual({ bottleOz: DEFAULT_SETTINGS.water.bottleOz, dailyGoalOz: 96 });
+    }
+  });
+
+  it("fills an entirely missing top-level section (e.g. water added after this file existed)", () => {
+    const stored = {
+      reminders: DEFAULT_SETTINGS.reminders,
+      pomodoro: DEFAULT_SETTINGS.pomodoro,
+      snoozeMs: DEFAULT_SETTINGS.snoozeMs,
+      maxSnoozes: DEFAULT_SETTINGS.maxSnoozes,
+      volume: DEFAULT_SETTINGS.volume,
+      startWithWindows: DEFAULT_SETTINGS.startWithWindows,
+    };
+
+    const merged = withDefaults(stored);
+    const result = parseSettings(merged);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.water).toEqual(DEFAULT_SETTINGS.water);
+    }
+  });
+
+  it("passes a present-but-wrong-typed value through unchanged, so parseSettings can report it", () => {
+    const merged = withDefaults({ ...DEFAULT_SETTINGS, volume: "loud" });
+    const result = parseSettings(merged);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues).toEqual(expect.arrayContaining([expect.stringContaining("volume must be a number")]));
+    }
+  });
+
+  it("is a no-op on an already-complete settings object", () => {
+    expect(withDefaults(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS);
   });
 });

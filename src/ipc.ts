@@ -1,28 +1,45 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { AlertStyle, ReminderKind } from "./core/reminders";
 
-export type Phase = "idle" | "takeoverActive";
+export interface ReminderSnapshot {
+  kind: ReminderKind;
+  remainingMs: number | null;
+}
 
 export interface TickPayload {
   nowMs: number;
   idleSeconds: number;
-  remainingMs: number | null;
-  phase: Phase;
+  reminders: ReminderSnapshot[];
+  activeKind: ReminderKind | null;
 }
 
-export interface HydrationDuePayload {
+export interface ReminderDuePayload {
+  kind: ReminderKind;
+  alertStyle: AlertStyle;
   dueAtMs: number;
 }
 
 export interface AppStateSnapshot {
-  remainingMs: number | null;
+  reminders: ReminderSnapshot[];
+  activeKind: ReminderKind | null;
   idleSeconds: number;
   nowMs: number;
-  phase: Phase;
 }
 
-export function setRemainingMs(ms: number | null): Promise<void> {
-  return invoke("set_remaining_ms", { ms });
+export interface ReminderConfig {
+  kind: ReminderKind;
+  alertStyle: AlertStyle;
+  pauseWhenIdle: boolean;
+}
+
+export function setRemainingMs(kind: ReminderKind, ms: number | null): Promise<void> {
+  return invoke("set_remaining_ms", { kind, ms });
+}
+
+/** Always pushes all four configs at once — no partial-update state on the Rust side. */
+export function setReminderConfigs(configs: ReminderConfig[]): Promise<void> {
+  return invoke("set_reminder_configs", { configs });
 }
 
 export function getState(): Promise<AppStateSnapshot> {
@@ -41,8 +58,6 @@ export function onTick(handler: (payload: TickPayload) => void): Promise<Unliste
   return listen<TickPayload>("tick", (event) => handler(event.payload));
 }
 
-export function onHydrationDue(
-  handler: (payload: HydrationDuePayload) => void,
-): Promise<UnlistenFn> {
-  return listen<HydrationDuePayload>("hydration-due", (event) => handler(event.payload));
+export function onReminderDue(handler: (payload: ReminderDuePayload) => void): Promise<UnlistenFn> {
+  return listen<ReminderDuePayload>("reminder-due", (event) => handler(event.payload));
 }

@@ -19,54 +19,100 @@
         <img src="/src/assets/logo.svg" alt="Flow State" />
         <h1>Flow State</h1>
       </div>
-      <p id="countdown" class="countdown">--:--</p>
-      <p id="streak-display" class="streak-display">Today: 0 · Streak: 0 days</p>
 
-      <div class="row">
-        <input id="interval-minutes" type="number" min="1" value="120" />
-        <button id="start-interval" type="button">Set interval (min)</button>
+      <div class="hero">
+        <p class="hero-label" id="hero-label">No reminders armed</p>
+        <p class="hero-countdown" id="hero-countdown"></p>
+      </div>
+      <div class="reminder-chips" id="reminder-chips"></div>
+
+      <div class="card water-card">
+        <div class="water-card-row">
+          <div class="ring-container" id="water-ring"></div>
+          <div class="water-stats">
+            <div class="bars-container" id="water-bars"></div>
+            <p class="water-streak" id="water-streak">Streak 0 days</p>
+          </div>
+        </div>
+        <div id="home-water-entry"></div>
+        <p class="water-range-stat" id="water-month-stats"></p>
+        <p class="water-range-stat" id="water-year-stats"></p>
       </div>
 
-      <div class="row">
-        <button id="fire-in-10s" type="button">Debug: fire in 10s</button>
+      <div class="card interval-card">
+        <label class="interval-slider-label" for="hydration-interval-slider">Start timer</label>
+        <div class="row">
+          <input id="hydration-interval-slider" type="range" min="5" max="240" step="5" value="120" />
+          <span id="hydration-interval-value" class="interval-slider-value">120 min</span>
+        </div>
       </div>
+
+      <button id="test-alert" type="button" class="ghost-btn">Test alert in 10s</button>
     </main>
 
     <section class="settings-view" id="settings-view" hidden>
       <h2 class="settings-title">Settings</h2>
 
-      <label class="settings-field">
-        Interval (minutes)
-        <input id="settings-interval" type="number" min="1" />
-      </label>
-      <label class="settings-field">
-        Snooze length (minutes)
-        <input id="settings-snooze" type="number" min="1" />
-      </label>
-      <label class="settings-field">
-        Max snoozes
-        <input id="settings-max-snoozes" type="number" min="0" step="1" />
-      </label>
-      <label class="settings-field">
-        Volume
-        <input id="settings-volume" type="range" min="0" max="1" step="0.05" />
-      </label>
-      <label class="settings-field settings-field-checkbox">
-        <input id="settings-start-with-windows" type="checkbox" />
-        Start with Windows
-      </label>
+      <details class="settings-section" open>
+        <summary>Reminders</summary>
+        <div id="settings-reminders-container"></div>
+      </details>
+
+      <details class="settings-section">
+        <summary>Water</summary>
+        <div class="settings-card-body">
+          <label class="settings-field">
+            Bottle size (oz)
+            <input id="settings-bottle-oz" type="number" min="1" />
+          </label>
+          <label class="settings-field">
+            Daily goal (oz)
+            <input id="settings-daily-goal-oz" type="number" min="1" />
+          </label>
+        </div>
+      </details>
+
+      <details class="settings-section">
+        <summary>Alerts &amp; sound</summary>
+        <div class="settings-card-body">
+          <label class="settings-field">
+            Snooze length (minutes)
+            <input id="settings-snooze" type="number" min="1" />
+          </label>
+          <label class="settings-field">
+            Max snoozes
+            <input id="settings-max-snoozes" type="number" min="0" step="1" />
+          </label>
+          <label class="settings-field">
+            Volume
+            <input id="settings-volume" type="range" min="0" max="1" step="0.05" />
+          </label>
+          <div class="row">
+            <button id="settings-test-sound" type="button">Test sound</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="settings-section">
+        <summary>System</summary>
+        <div class="settings-card-body">
+          <label class="settings-field settings-field-checkbox">
+            <input id="settings-start-with-windows" type="checkbox" />
+            Start with Windows
+          </label>
+        </div>
+      </details>
 
       <p class="settings-error" id="settings-error" hidden></p>
 
       <div class="row">
-        <button id="settings-test-sound" type="button">Test sound</button>
         <button id="settings-save" type="button" class="takeover-confirm">Save</button>
       </div>
     </section>
 
     <div id="inactive-overlay" class="inactive-overlay" hidden>
       <p class="inactive-text">
-        Inactive (<span id="inactive-seconds">0</span>s)<br />
+        Paused<br />
         <span class="inactive-hint">move or type to resume</span>
       </p>
     </div>
@@ -74,10 +120,13 @@
     <div id="takeover-overlay" class="takeover-overlay" hidden>
       <div class="takeover-card">
         <img src="/src/assets/logo.svg" alt="" class="takeover-logo" />
-        <h2 class="takeover-title">Time to hydrate</h2>
+        <h2 class="takeover-title" id="takeover-title">Time to hydrate</h2>
+        <div id="takeover-water-entry" hidden></div>
+        <div class="row" id="takeover-confirm-row">
+          <button id="takeover-confirm" type="button" class="takeover-confirm">Done</button>
+        </div>
         <div class="row">
-          <button id="takeover-confirm" type="button" class="takeover-confirm">I drank water</button>
-          <button id="takeover-snooze" type="button" class="takeover-snooze">Snooze 5 min</button>
+          <button id="takeover-snooze" type="button" class="takeover-snooze">Snooze 15 min</button>
         </div>
         <p class="takeover-hint" id="takeover-snooze-hint" hidden></p>
       </div>

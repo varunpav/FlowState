@@ -1,7 +1,7 @@
 mod idle;
 mod scheduler;
 
-use scheduler::{Phase, SchedulerState};
+use scheduler::{ReminderConfigInput, ReminderKind, ReminderRemainingEntry, ReminderSnapshot, SchedulerState};
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -9,31 +9,57 @@ use tauri::{AppHandle, Manager, RunEvent, Runtime, State, WindowEvent};
 use tauri_plugin_store::StoreExt;
 
 const SETTINGS_STORE: &str = "settings.json";
-const REMAINING_MS_KEY: &str = "remainingMs";
+const REMAINING_MS_BY_KIND_KEY: &str = "remainingMsByKind";
+const REMINDER_CONFIGS_KEY: &str = "reminderConfigs";
+/// v1's single-reminder key — deleted on startup so it can't linger and be
+/// mistaken for live state by anything still reading it.
+const LEGACY_REMAINING_MS_KEY: &str = "remainingMs";
 const TRAY_ID: &str = "main-tray";
-const SNOOZE_MS_DEFAULT: i64 = 5 * 60 * 1000;
+const SNOOZE_MS_DEFAULT: i64 = 15 * 60 * 1000;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AppStateSnapshot {
-    remaining_ms: Option<i64>,
+    reminders: Vec<ReminderSnapshot>,
+    active_kind: Option<ReminderKind>,
     idle_seconds: u64,
     now_ms: i64,
-    phase: Phase,
 }
 
 #[tauri::command]
-fn set_remaining_ms<R: Runtime>(app: AppHandle<R>, state: State<SchedulerState>, ms: Option<i64>) {
-    scheduler::set_remaining(&state, ms);
-    persist_remaining(&app, ms);
+fn set_remaining_ms<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<SchedulerState>,
+    kind: ReminderKind,
+    ms: Option<i64>,
+) {
+    scheduler::set_remaining(&state, kind, ms);
+    persist_remaining(&app, &state);
+}
+
+#[tauri::command]
+fn set_reminder_configs<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<SchedulerState>,
+    configs: Vec<ReminderConfigInput>,
+) {
+    scheduler::set_reminder_configs(&state, &configs);
+    persist_reminder_configs(&app, &configs);
 }
 
 #[tauri::command]
 fn get_state(state: State<SchedulerState>) -> AppStateSnapshot {
     let guard = state.inner.lock().unwrap();
     AppStateSnapshot {
-        remaining_ms: guard.remaining_ms,
-        phase: guard.phase,
+        reminders: guard
+            .reminders
+            .iter()
+            .map(|r| ReminderSnapshot {
+                kind: r.kind,
+                remaining_ms: r.remaining_ms,
+            })
+            .collect(),
+        active_kind: guard.active,
         idle_seconds: idle::idle_seconds(),
         now_ms: scheduler::now_ms(),
     }
@@ -49,17 +75,26 @@ fn release_takeover<R: Runtime>(app: AppHandle<R>, state: State<SchedulerState>)
     scheduler::release_takeover(&app, &state);
 }
 
-/// Best-effort disk flush so the countdown survives a restart. A closed app
-/// never ticks, so the budget is never decremented while closed — reloading
-/// this value as-is on the next launch is exactly consistent with the pause
-/// model (no elapsed-time gap math needed).
-fn persist_remaining<R: Runtime>(app: &AppHandle<R>, ms: Option<i64>) {
+/// Best-effort disk flush so every reminder's budget survives a restart. A
+/// closed app never ticks, so no budget is ever decremented while closed —
+/// reloading these values as-is on the next launch is exactly consistent
+/// with the pause model (no elapsed-time gap math needed).
+fn persist_remaining<R: Runtime>(app: &AppHandle<R>, state: &SchedulerState) {
     if let Ok(store) = app.store(SETTINGS_STORE) {
-        match ms {
-            Some(v) => store.set(REMAINING_MS_KEY, serde_json::json!(v)),
-            None => store.set(REMAINING_MS_KEY, serde_json::Value::Null),
+        let entries = scheduler::remaining_entries(state);
+        if let Ok(value) = serde_json::to_value(entries) {
+            store.set(REMAINING_MS_BY_KIND_KEY, value);
+            let _ = store.save();
         }
-        let _ = store.save();
+    }
+}
+
+fn persist_reminder_configs<R: Runtime>(app: &AppHandle<R>, configs: &[ReminderConfigInput]) {
+    if let Ok(store) = app.store(SETTINGS_STORE) {
+        if let Ok(value) = serde_json::to_value(configs) {
+            store.set(REMINDER_CONFIGS_KEY, value);
+            let _ = store.save();
+        }
     }
 }
 
@@ -83,6 +118,7 @@ pub fn run() {
         .manage(SchedulerState::default())
         .invoke_handler(tauri::generate_handler![
             set_remaining_ms,
+            set_reminder_configs,
             get_state,
             set_pause_threshold_seconds,
             release_takeover
@@ -96,13 +132,36 @@ pub fn run() {
 
             let state = app.state::<SchedulerState>();
             if let Ok(store) = app.store(SETTINGS_STORE) {
-                let restored = store.get(REMAINING_MS_KEY).and_then(|v| v.as_i64());
-                scheduler::set_remaining(&state, restored);
+                store.delete(LEGACY_REMAINING_MS_KEY);
+
+                // Restore each kind's saved alertStyle/pauseWhenIdle BEFORE
+                // any remaining_ms restoration below — otherwise a restored
+                // budget could fire and seize the screen, styled as the
+                // still-default alertStyle, in the brief window between
+                // launch and TypeScript's first `set_reminder_configs` push.
+                if let Some(configs_value) = store.get(REMINDER_CONFIGS_KEY) {
+                    if let Ok(configs) = serde_json::from_value::<Vec<ReminderConfigInput>>(configs_value) {
+                        scheduler::set_reminder_configs(&state, &configs);
+                    }
+                }
+
+                if let Some(entries_value) = store.get(REMAINING_MS_BY_KIND_KEY) {
+                    if let Ok(entries) = serde_json::from_value::<Vec<ReminderRemainingEntry>>(entries_value) {
+                        for entry in entries {
+                            scheduler::set_remaining(&state, entry.kind, entry.remaining_ms);
+                        }
+                    }
+                }
             }
 
             let show_item = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
-            let snooze_item = MenuItem::with_id(app, "snooze", "Snooze 5 min", true, None::<&str>)?;
-            let pause_item = MenuItem::with_id(app, "pause", "Pause", true, None::<&str>)?;
+            // The tray's quick actions act on the hydration reminder
+            // specifically — with four independent reminders a single
+            // "Snooze"/"Pause" pair is otherwise ambiguous, and hydration is
+            // the one every install has enabled by default. A per-kind tray
+            // submenu is a reasonable future improvement, not required here.
+            let snooze_item = MenuItem::with_id(app, "snooze", "Snooze hydration 15 min", true, None::<&str>)?;
+            let pause_item = MenuItem::with_id(app, "pause", "Pause hydration", true, None::<&str>)?;
             let separator = PredefinedMenuItem::separator(app)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(
@@ -125,13 +184,13 @@ pub fn run() {
                             .and_then(|s| s.get("snoozeMs"))
                             .and_then(|v| v.as_i64())
                             .unwrap_or(SNOOZE_MS_DEFAULT);
-                        scheduler::set_remaining(&state, Some(snooze_ms));
-                        persist_remaining(app, Some(snooze_ms));
+                        scheduler::set_remaining(&state, ReminderKind::Hydration, Some(snooze_ms));
+                        persist_remaining(app, &state);
                     }
                     "pause" => {
                         let state = app.state::<SchedulerState>();
-                        scheduler::set_remaining(&state, None);
-                        persist_remaining(app, None);
+                        scheduler::set_remaining(&state, ReminderKind::Hydration, None);
+                        persist_remaining(app, &state);
                     }
                     "quit" => app.exit(0),
                     _ => {}
@@ -164,8 +223,7 @@ pub fn run() {
         .run(|app_handle, event| {
             if let RunEvent::Exit = event {
                 let state = app_handle.state::<SchedulerState>();
-                let remaining = state.inner.lock().unwrap().remaining_ms;
-                persist_remaining(app_handle, remaining);
+                persist_remaining(app_handle, &state);
             }
         });
 }
