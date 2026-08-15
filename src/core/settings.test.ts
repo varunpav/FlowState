@@ -57,6 +57,17 @@ describe("parseSettings", () => {
     }
   });
 
+  it("rejects an idlePause.thresholdSeconds outside its bounds with a path-qualified message", () => {
+    const bad = { ...DEFAULT_SETTINGS, idlePause: { ...DEFAULT_SETTINGS.idlePause, thresholdSeconds: 2 } };
+    const result = parseSettings(bad);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues).toEqual(
+        expect.arrayContaining([expect.stringContaining("idlePause.thresholdSeconds must be >= 5")]),
+      );
+    }
+  });
+
   it("collects every validation issue across nested and top-level fields, not just the first", () => {
     const bad = {
       ...DEFAULT_SETTINGS,
@@ -148,5 +159,25 @@ describe("withDefaults", () => {
 
   it("is a no-op on an already-complete settings object", () => {
     expect(withDefaults(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it("fills idlePause with the default when reading a settings file written before that field existed", () => {
+    const stored = {
+      reminders: DEFAULT_SETTINGS.reminders,
+      pomodoro: DEFAULT_SETTINGS.pomodoro,
+      water: DEFAULT_SETTINGS.water,
+      snoozeMs: DEFAULT_SETTINGS.snoozeMs,
+      maxSnoozes: DEFAULT_SETTINGS.maxSnoozes,
+      volume: DEFAULT_SETTINGS.volume,
+      startWithWindows: DEFAULT_SETTINGS.startWithWindows,
+    };
+
+    const merged = withDefaults(stored);
+    const result = parseSettings(merged);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.idlePause).toEqual(DEFAULT_SETTINGS.idlePause);
+    }
   });
 });

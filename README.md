@@ -45,11 +45,12 @@ First launch compiles the Rust side, which takes a minute or two; after that, `c
 
 **The window starts hidden in the system tray** (or the overflow "^" area next to it, if Windows tucks new icons away by default) — that's intentional, it's meant to live in the background. Click the tray icon, or the "Flow State" entry in the taskbar, to open it. From there:
 
-- **Start timer** is a slider on the home page that arms the hydration countdown for that many minutes — drag and release to set it.
-- **Test alert in 10s** is a fast-forward button so you can see a takeover without waiting for a real interval to elapse — useful for trying out the confirm/snooze flow immediately.
+- The home page's hero is always the **hydration countdown** — drag the slider and hit **Start timer** to arm/restart it at that many minutes (the slider alone just sets the length for the *next* cycle, without disturbing a countdown already running). Any other enabled reminder (Pomodoro, eye break, stand-up) shows in a small row underneath.
+- **Pause** freezes every reminder at its exact remaining time; **Resume** picks up from there. Same toggle is reachable from the tray as "Pause / Resume all."
+- **Test alert in 10s** / **Test notification** are fast-forward buttons — the first arms a real hydration takeover, the second fires an OS toast directly without waiting for a reminder to actually fire.
 - The home page also shows a **hydration ring and 7-day bar chart** tracking progress toward the daily water goal (default a gallon/128oz), with quick-add buttons to log how much you drank — either from a takeover or anytime from the home page.
-- **Settings** tab has one card per reminder (hydration, Pomodoro, eye break, stand-up) — each with its own enable toggle, interval (or Pomodoro's 25/55 focus + 5/15 break choice), and an "attention grabber" style: full-screen takeover or a quiet system notification. Also covers water bottle size/goal, snooze length, max snoozes, alert volume, and start-with-Windows. Everything persists across restarts.
-- Step away from the keyboard for 30+ seconds and every reminder's countdown pauses (shown with a grayed-out "Paused" overlay) until you're back — except a Pomodoro break in progress, which keeps running, since walking away from the desk *is* the break.
+- **Settings** tab has one card per reminder (hydration, Pomodoro, eye break, stand-up) — each with its own enable toggle, interval (or Pomodoro's 25/55 focus + 5/15 break choice), and an "attention grabber" style: full-screen takeover or a quiet system notification. Also covers water bottle size/goal (plus a day picker to add/remove/clear logged ounces for the last week), snooze length, max snoozes, alert volume, whether inactivity pauses timers at all (and after how long — handy for "I'm watching a movie, don't pause my breaks"), and start-with-Windows. Everything persists across restarts.
+- Step away from the keyboard past the configured inactivity threshold (default 30s) and every reminder's countdown pauses (shown with a grayed-out "Paused" overlay) until you're back — except a Pomodoro break in progress, which keeps running, since walking away from the desk *is* the break. Turn inactivity-pausing off entirely in Settings if you don't want that behavior at all.
 
 ### Tests
 

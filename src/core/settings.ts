@@ -1,3 +1,4 @@
+import { INACTIVITY_THRESHOLD_SECONDS } from "./idlePolicy";
 import { ALERT_STYLES, type AlertStyle } from "./reminders";
 
 export interface ReminderSettings {
@@ -18,6 +19,12 @@ export interface WaterSettings {
   dailyGoalOz: number;
 }
 
+export interface IdlePauseSettings {
+  /** False = never pause for inactivity — the "watching a movie" escape hatch. */
+  enabled: boolean;
+  thresholdSeconds: number;
+}
+
 export interface RemindersSettings {
   hydration: ReminderSettings;
   eyeBreak: ReminderSettings;
@@ -29,6 +36,7 @@ export interface Settings {
   /** Separate from `reminders`: it has no single interval, it alternates focus/break. */
   pomodoro: PomodoroSettings;
   water: WaterSettings;
+  idlePause: IdlePauseSettings;
   snoozeMs: number;
   maxSnoozes: number;
   volume: number;
@@ -45,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   pomodoro: { enabled: false, focusMs: 25 * 60 * 1000, breakMs: 5 * 60 * 1000, alertStyle: "takeover" },
   water: { bottleOz: 24, dailyGoalOz: 128 },
+  idlePause: { enabled: true, thresholdSeconds: INACTIVITY_THRESHOLD_SECONDS },
   snoozeMs: 15 * 60 * 1000,
   maxSnoozes: 3,
   volume: 0.7,
@@ -204,6 +213,17 @@ function parseWater(obj: Record<string, unknown>, issues: string[]): WaterSettin
   return { bottleOz, dailyGoalOz };
 }
 
+function parseIdlePause(obj: Record<string, unknown>, issues: string[]): IdlePauseSettings | undefined {
+  const raw = child(obj, "", "idlePause", issues);
+  if (!raw) return undefined;
+  const path = "idlePause";
+
+  const enabled = bool(raw, path, "enabled", issues);
+  const thresholdSeconds = num(raw, path, "thresholdSeconds", issues, { min: 5, max: 3600 });
+  if (enabled === undefined || thresholdSeconds === undefined) return undefined;
+  return { enabled, thresholdSeconds };
+}
+
 /**
  * Validated at the boundary where JSON returns from the Rust store, rather
  * than deep inside the scheduling engine — callers get a discriminated union
@@ -228,6 +248,7 @@ export function parseSettings(input: unknown): ParseSettingsResult {
 
   const pomodoro = parsePomodoro(obj, issues);
   const water = parseWater(obj, issues);
+  const idlePause = parseIdlePause(obj, issues);
 
   const snoozeMs = num(obj, "", "snoozeMs", issues, { min: 1_000 });
   const maxSnoozes = num(obj, "", "maxSnoozes", issues, { min: 0, integer: true });
@@ -248,6 +269,7 @@ export function parseSettings(input: unknown): ParseSettingsResult {
       },
       pomodoro: pomodoro as PomodoroSettings,
       water: water as WaterSettings,
+      idlePause: idlePause as IdlePauseSettings,
       snoozeMs: snoozeMs as number,
       maxSnoozes: maxSnoozes as number,
       volume: volume as number,

@@ -1,5 +1,5 @@
-import type { ArmedReminder } from "../core/reminders";
-import { REMINDER_LABELS, nextDue } from "../core/reminders";
+import type { ReminderKind } from "../core/reminders";
+import { REMINDER_LABELS } from "../core/reminders";
 import { formatCountdown } from "../core/format";
 import { entryOn, goalStreak, lastNDays, monthToDate, yearToDate, type DailyLog } from "../core/waterLog";
 import { mountWaterEntry, type WaterEntryHandle } from "./waterEntry";
@@ -22,6 +22,7 @@ export interface HomeViewElements {
   waterEntryContainerEl: HTMLElement;
   intervalSliderEl: HTMLInputElement;
   intervalSliderValueEl: HTMLElement;
+  startTimerBtn: HTMLButtonElement;
   pauseBtn: HTMLButtonElement;
   testAlertBtn: HTMLButtonElement;
   testNotificationBtn: HTMLButtonElement;
@@ -30,15 +31,24 @@ export interface HomeViewElements {
 export interface HomeViewOptions {
   bottleOz: number;
   onWaterLogged: (oz: number, nowMs: number) => void;
-  /** Slider is bound to `change`, not `input` — firing per-pixel would restart the countdown continuously. */
+  /** Slider is bound to `change`, not `input` — firing per-pixel would restart the countdown continuously. Next-cycle only: never clobbers a running countdown. */
   onIntervalChanged: (minutes: number) => void;
+  /** The Start timer button — arms/restarts hydration right now, at whatever the slider currently reads, even if it's already running. */
+  onStartTimer: (minutes: number) => void;
   onPauseToggle: () => void;
   onTestAlert: () => void;
   onTestNotification: () => void;
 }
 
+/** One row entry for a non-hydration timer shown under the hero. */
+export interface TimerRowEntry {
+  kind: ReminderKind;
+  remainingMs: number | null;
+}
+
 export interface HomeView {
-  renderReminders(armed: ArmedReminder[]): void;
+  /** Hero is always Hydration; `secondary` is pre-filtered to enabled kinds, in fixed order. */
+  renderTimers(hydrationMs: number | null, secondary: TimerRowEntry[]): void;
   renderWater(log: DailyLog, todayKey: string, goalOz: number): void;
   setBottleOz(oz: number): void;
   setIntervalMinutes(minutes: number): void;
@@ -157,30 +167,23 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
     el.intervalSliderValueEl.textContent = `${el.intervalSliderEl.value} min`;
   });
 
+  el.startTimerBtn.addEventListener("click", () => options.onStartTimer(Number(el.intervalSliderEl.value)));
   el.pauseBtn.addEventListener("click", () => options.onPauseToggle());
   el.testAlertBtn.addEventListener("click", () => options.onTestAlert());
   el.testNotificationBtn.addEventListener("click", () => options.onTestNotification());
 
   return {
-    renderReminders(armed: ArmedReminder[]) {
-      const hero = nextDue(armed);
-      if (paused) {
-        el.heroLabelEl.textContent = "Paused";
-        el.heroCountdownEl.textContent = "";
-      } else if (!hero) {
-        el.heroLabelEl.textContent = "No reminders armed";
-        el.heroCountdownEl.textContent = "";
-      } else {
-        el.heroLabelEl.textContent = REMINDER_LABELS[hero.kind];
-        el.heroCountdownEl.textContent = formatCountdown(hero.remainingMs);
-      }
+    renderTimers(hydrationMs: number | null, secondary: TimerRowEntry[]) {
+      // The countdown itself stays visible while paused — only the label
+      // changes. Blanking it reads as a hang, not a pause.
+      el.heroLabelEl.textContent = paused ? "Paused" : REMINDER_LABELS.hydration;
+      el.heroCountdownEl.textContent = hydrationMs === null ? "--:--" : formatCountdown(hydrationMs);
 
-      const chips = armed.filter((a) => a.kind !== hero?.kind);
       el.chipsEl.replaceChildren(
-        ...chips.map((chip) => {
+        ...secondary.map((entry) => {
           const chipEl = document.createElement("span");
           chipEl.className = "reminder-chip";
-          chipEl.textContent = `${REMINDER_LABELS[chip.kind]} ${formatCountdown(chip.remainingMs)}`;
+          chipEl.textContent = `${REMINDER_LABELS[entry.kind]} ${entry.remainingMs === null ? "—" : formatCountdown(entry.remainingMs)}`;
           return chipEl;
         }),
       );
