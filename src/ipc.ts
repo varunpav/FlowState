@@ -12,6 +12,7 @@ export interface TickPayload {
   idleSeconds: number;
   reminders: ReminderSnapshot[];
   activeKind: ReminderKind | null;
+  globalPause: boolean;
 }
 
 export interface ReminderDuePayload {
@@ -25,6 +26,7 @@ export interface AppStateSnapshot {
   activeKind: ReminderKind | null;
   idleSeconds: number;
   nowMs: number;
+  globalPause: boolean;
 }
 
 export interface ReminderConfig {
@@ -48,6 +50,10 @@ export function getState(): Promise<AppStateSnapshot> {
 
 export function setPauseThresholdSeconds(seconds: number): Promise<void> {
   return invoke("set_pause_threshold_seconds", { seconds });
+}
+
+export function setGlobalPause(paused: boolean): Promise<void> {
+  return invoke("set_global_pause", { paused });
 }
 
 export function releaseTakeover(): Promise<void> {

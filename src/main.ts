@@ -1,3 +1,4 @@
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createChime } from "./audio/chime";
 import { formatCountdown } from "./core/format";
@@ -5,11 +6,12 @@ import { INACTIVITY_THRESHOLD_SECONDS, isIdle } from "./core/idlePolicy";
 import { advancePomodoro, type PomodoroState } from "./core/pomodoro";
 import { nextDue, reconcileReminders, REMINDER_LABELS, type ArmedReminder, type ReminderKind } from "./core/reminders";
 import type { Settings } from "./core/settings";
-import { dayKeyOf, logWater } from "./core/waterLog";
+import { clearDay, dayKeyOf, entryOn, logWater, removeWater } from "./core/waterLog";
 import {
   getState,
   onReminderDue,
   onTick,
+  setGlobalPause,
   setPauseThresholdSeconds,
   setReminderConfigs,
   setRemainingMs,
@@ -98,6 +100,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   let dailyLog = await loadLog();
   let todayKey = dayKeyOf(Date.now(), localTzOffsetMinutes());
   let lastArmed: ArmedReminder[] = [];
+  let isPaused = false;
 
   const chime = createChime(settings.volume);
   // reminder-due arrives via an IPC event, not a user gesture, so the shared
@@ -112,6 +115,18 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (key === todayKey) {
       homeView.renderWater(dailyLog, todayKey, settings.water.dailyGoalOz);
     }
+  }
+
+  function handleWaterRemoved(oz: number) {
+    dailyLog = removeWater(dailyLog, todayKey, oz);
+    void saveLog(dailyLog);
+    homeView.renderWater(dailyLog, todayKey, settings.water.dailyGoalOz);
+  }
+
+  function handleTodayCleared() {
+    dailyLog = clearDay(dailyLog, todayKey);
+    void saveLog(dailyLog);
+    homeView.renderWater(dailyLog, todayKey, settings.water.dailyGoalOz);
   }
 
   const takeover = initTakeover(
@@ -134,6 +149,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   const homeView = initHomeView(
     {
+      heroEl: document.querySelector("#hero")!,
       heroLabelEl: document.querySelector("#hero-label")!,
       heroCountdownEl: document.querySelector("#hero-countdown")!,
       chipsEl: document.querySelector("#reminder-chips")!,
@@ -145,7 +161,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       waterEntryContainerEl: document.querySelector("#home-water-entry")!,
       intervalSliderEl: document.querySelector("#hydration-interval-slider")!,
       intervalSliderValueEl: document.querySelector("#hydration-interval-value")!,
+      pauseBtn: document.querySelector("#pause-toggle")!,
       testAlertBtn: document.querySelector("#test-alert")!,
+      testNotificationBtn: document.querySelector("#test-notification")!,
     },
     {
       bottleOz: settings.water.bottleOz,
@@ -155,12 +173,37 @@ window.addEventListener("DOMContentLoaded", async () => {
           const ms = minutes * 60_000;
           settings.reminders.hydration.intervalMs = ms;
           await saveSettings(settings);
-          await setRemainingMs("hydration", ms);
+          // Next cycle only — never clobber a countdown already running.
+          // Read authoritatively from getState() rather than the cached
+          // lastArmed, which can be up to one tick (≤1s) stale; using the
+          // stale value here would intermittently reset a running timer.
+          const current = (await getState()).reminders.find((r) => r.kind === "hydration")?.remainingMs ?? null;
+          if (current === null && settings.reminders.hydration.enabled) {
+            await setRemainingMs("hydration", ms);
+          }
         })();
       },
+      onPauseToggle: () => {
+        const next = !isPaused;
+        isPaused = next;
+        homeView.setPaused(next);
+        void setGlobalPause(next);
+      },
       onTestAlert: () => {
-        const hero = nextDue(lastArmed);
-        void setRemainingMs(hero?.kind ?? "hydration", 10_000);
+        // Always hydration — an unpredictable "whatever's next-due" target
+        // made this button confusing to use for its actual purpose.
+        void setRemainingMs("hydration", 10_000);
+      },
+      onTestNotification: () => {
+        void (async () => {
+          let granted = await isPermissionGranted();
+          if (!granted) {
+            granted = (await requestPermission()) === "granted";
+          }
+          if (granted) {
+            sendNotification({ title: "Flow State", body: "Test notification" });
+          }
+        })();
       },
     },
   );
@@ -173,10 +216,14 @@ window.addEventListener("DOMContentLoaded", async () => {
       errorEl: document.querySelector("#settings-error")!,
       bottleOzInput: document.querySelector("#settings-bottle-oz")!,
       dailyGoalOzInput: document.querySelector("#settings-daily-goal-oz")!,
+      todayLoggedEl: document.querySelector("#settings-today-logged")!,
+      removeOzInput: document.querySelector("#settings-remove-oz")!,
+      removeWaterBtn: document.querySelector("#settings-remove-water")!,
+      clearTodayBtn: document.querySelector("#settings-clear-today")!,
       snoozeInput: document.querySelector("#settings-snooze")!,
       maxSnoozesInput: document.querySelector("#settings-max-snoozes")!,
       volumeInput: document.querySelector("#settings-volume")!,
-      startWithWindowsInput: document.querySelector("#settings-start-with-windows")!,
+      startWithWindowsContainerEl: document.querySelector("#settings-start-with-windows-switch")!,
     },
     settings,
     chime,
@@ -190,6 +237,11 @@ window.addEventListener("DOMContentLoaded", async () => {
         await applyReconcile(updated, pomodoroState, snapshot);
         showTab("home");
       })();
+    },
+    {
+      getTodayOz: () => entryOn(dailyLog, todayKey).oz,
+      onRemoveWater: handleWaterRemoved,
+      onClearToday: handleTodayCleared,
     },
   );
 
@@ -208,6 +260,8 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   homeView.setIntervalMinutes(settings.reminders.hydration.intervalMs / 60_000);
   homeView.renderWater(dailyLog, todayKey, settings.water.dailyGoalOz);
+  isPaused = afterReconcile.globalPause;
+  homeView.setPaused(isPaused);
   lastArmed = armedFrom(afterReconcile.reminders);
   homeView.renderReminders(lastArmed);
 
@@ -221,6 +275,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   await onTick((payload) => {
     const idle = isIdle(payload.idleSeconds);
     if (inactiveOverlayEl) inactiveOverlayEl.hidden = !idle;
+
+    if (payload.globalPause !== isPaused) {
+      isPaused = payload.globalPause;
+      homeView.setPaused(isPaused);
+    }
 
     lastArmed = armedFrom(payload.reminders);
     homeView.renderReminders(lastArmed);
@@ -254,9 +313,13 @@ window.addEventListener("DOMContentLoaded", async () => {
         // `active.is_none()`), so it's already in place by the time the
         // user clicks Confirm; no IPC round-trip on that click path.
         await setRemainingMs("pomodoro", advance.nextBudgetMs);
-      } else {
+      } else if (settings.reminders[kind].enabled) {
         await setRemainingMs(kind, settings.reminders[kind].intervalMs);
       }
+      // Disabled: leave it unarmed — Rust already cleared remaining_ms to
+      // null when it fired. Only reachable via the debug test-alert button
+      // (a disabled reminder can't fire on its own), but re-arming a
+      // disabled kind forever would be a real bug if it ever did.
 
       if (payload.alertStyle === "takeover") {
         takeover.show(kind);

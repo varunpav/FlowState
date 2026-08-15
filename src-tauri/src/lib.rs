@@ -11,6 +11,7 @@ use tauri_plugin_store::StoreExt;
 const SETTINGS_STORE: &str = "settings.json";
 const REMAINING_MS_BY_KIND_KEY: &str = "remainingMsByKind";
 const REMINDER_CONFIGS_KEY: &str = "reminderConfigs";
+const GLOBAL_PAUSE_KEY: &str = "globalPause";
 /// v1's single-reminder key — deleted on startup so it can't linger and be
 /// mistaken for live state by anything still reading it.
 const LEGACY_REMAINING_MS_KEY: &str = "remainingMs";
@@ -24,6 +25,7 @@ struct AppStateSnapshot {
     active_kind: Option<ReminderKind>,
     idle_seconds: u64,
     now_ms: i64,
+    global_pause: bool,
 }
 
 #[tauri::command]
@@ -62,12 +64,19 @@ fn get_state(state: State<SchedulerState>) -> AppStateSnapshot {
         active_kind: guard.active,
         idle_seconds: idle::idle_seconds(),
         now_ms: scheduler::now_ms(),
+        global_pause: guard.global_pause,
     }
 }
 
 #[tauri::command]
 fn set_pause_threshold_seconds(state: State<SchedulerState>, seconds: u64) {
     state.inner.lock().unwrap().pause_threshold_seconds = seconds;
+}
+
+#[tauri::command]
+fn set_global_pause<R: Runtime>(app: AppHandle<R>, state: State<SchedulerState>, paused: bool) {
+    scheduler::set_global_pause(&state, paused);
+    persist_global_pause(&app, paused);
 }
 
 #[tauri::command]
@@ -98,6 +107,14 @@ fn persist_reminder_configs<R: Runtime>(app: &AppHandle<R>, configs: &[ReminderC
     }
 }
 
+/// Pausing then quitting must not silently resume on next launch.
+fn persist_global_pause<R: Runtime>(app: &AppHandle<R>, paused: bool) {
+    if let Ok(store) = app.store(SETTINGS_STORE) {
+        store.set(GLOBAL_PAUSE_KEY, serde_json::json!(paused));
+        let _ = store.save();
+    }
+}
+
 fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -121,6 +138,7 @@ pub fn run() {
             set_reminder_configs,
             get_state,
             set_pause_threshold_seconds,
+            set_global_pause,
             release_takeover
         ])
         .setup(|app| {
@@ -152,16 +170,25 @@ pub fn run() {
                         }
                     }
                 }
+
+                if let Some(paused) = store.get(GLOBAL_PAUSE_KEY).and_then(|v| v.as_bool()) {
+                    scheduler::set_global_pause(&state, paused);
+                }
             }
 
             let show_item = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
-            // The tray's quick actions act on the hydration reminder
-            // specifically — with four independent reminders a single
-            // "Snooze"/"Pause" pair is otherwise ambiguous, and hydration is
-            // the one every install has enabled by default. A per-kind tray
-            // submenu is a reasonable future improvement, not required here.
+            // Snooze acts on the hydration reminder specifically — with four
+            // independent reminders a per-kind snooze is otherwise
+            // ambiguous, and hydration is the one every install has enabled
+            // by default. A per-kind tray submenu is a reasonable future
+            // improvement, not required here. Pause, unlike Snooze, is
+            // global (mirrors the home page's Pause/Resume button) — a
+            // label that doesn't dynamically flip between "Pause"/"Resume"
+            // would need the MenuItem handle held past setup, which isn't
+            // worth it for a toggle whose current state is always visible
+            // on the home page anyway.
             let snooze_item = MenuItem::with_id(app, "snooze", "Snooze hydration 15 min", true, None::<&str>)?;
-            let pause_item = MenuItem::with_id(app, "pause", "Pause hydration", true, None::<&str>)?;
+            let pause_item = MenuItem::with_id(app, "pause", "Pause / Resume all", true, None::<&str>)?;
             let separator = PredefinedMenuItem::separator(app)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(
@@ -189,8 +216,9 @@ pub fn run() {
                     }
                     "pause" => {
                         let state = app.state::<SchedulerState>();
-                        scheduler::set_remaining(&state, ReminderKind::Hydration, None);
-                        persist_remaining(app, &state);
+                        let currently_paused = state.inner.lock().unwrap().global_pause;
+                        scheduler::set_global_pause(&state, !currently_paused);
+                        persist_global_pause(app, !currently_paused);
                     }
                     "quit" => app.exit(0),
                     _ => {}

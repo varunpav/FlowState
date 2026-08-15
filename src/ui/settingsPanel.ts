@@ -3,6 +3,7 @@ import type { ChimeHandle } from "../audio/chime";
 import { parseSettings, type Settings } from "../core/settings";
 import { saveSettings } from "../settingsStore";
 import { mountPomodoroCard, mountReminderCard } from "./reminderCard";
+import { createSwitch } from "./switch";
 
 export interface SettingsPanelElements {
   remindersContainerEl: HTMLElement;
@@ -11,15 +12,32 @@ export interface SettingsPanelElements {
   errorEl: HTMLElement;
   bottleOzInput: HTMLInputElement;
   dailyGoalOzInput: HTMLInputElement;
+  todayLoggedEl: HTMLElement;
+  removeOzInput: HTMLInputElement;
+  removeWaterBtn: HTMLButtonElement;
+  clearTodayBtn: HTMLButtonElement;
   snoozeInput: HTMLInputElement;
   maxSnoozesInput: HTMLInputElement;
   volumeInput: HTMLInputElement;
-  startWithWindowsInput: HTMLInputElement;
+  startWithWindowsContainerEl: HTMLElement;
 }
 
 export interface SettingsPanel {
   /** Repopulate fields from the current settings — call when the Settings tab becomes active. */
   refresh(): void;
+}
+
+/**
+ * The water log is a separate store from Settings and isn't validated by
+ * parseSettings, so removal/clear act immediately rather than waiting on
+ * the Save button — routing them through Save would mean Save silently
+ * owns two unrelated stores. `getTodayOz` is a live getter (not a snapshot)
+ * so refresh() and the post-action re-render always read current state.
+ */
+export interface WaterRemovalCallbacks {
+  getTodayOz(): number;
+  onRemoveWater(oz: number): void;
+  onClearToday(): void;
 }
 
 /**
@@ -33,11 +51,19 @@ export function initSettingsPanel(
   settings: Settings,
   chime: ChimeHandle,
   onSaved: (settings: Settings) => void,
+  water: WaterRemovalCallbacks,
 ): SettingsPanel {
   const hydrationCard = mountReminderCard(el.remindersContainerEl, "hydration", settings.reminders.hydration);
   const pomodoroCard = mountPomodoroCard(el.remindersContainerEl, settings.pomodoro);
   const eyeBreakCard = mountReminderCard(el.remindersContainerEl, "eyeBreak", settings.reminders.eyeBreak);
   const standUpCard = mountReminderCard(el.remindersContainerEl, "standUp", settings.reminders.standUp);
+
+  const startWithWindowsSwitch = createSwitch(false);
+  el.startWithWindowsContainerEl.replaceChildren(startWithWindowsSwitch.el);
+
+  function refreshTodayLogged() {
+    el.todayLoggedEl.textContent = `Today logged: ${water.getTodayOz()} oz`;
+  }
 
   function refresh() {
     hydrationCard.setValue(settings.reminders.hydration);
@@ -46,6 +72,7 @@ export function initSettingsPanel(
     standUpCard.setValue(settings.reminders.standUp);
     el.bottleOzInput.value = String(settings.water.bottleOz);
     el.dailyGoalOzInput.value = String(settings.water.dailyGoalOz);
+    refreshTodayLogged();
     el.snoozeInput.value = String(settings.snoozeMs / 60_000);
     el.maxSnoozesInput.value = String(settings.maxSnoozes);
     el.volumeInput.value = String(settings.volume);
@@ -54,9 +81,23 @@ export function initSettingsPanel(
     // can drift if the user removes the entry via Task Manager's Startup
     // tab without ever touching this app's settings.
     void isEnabled().then((actual) => {
-      el.startWithWindowsInput.checked = actual;
+      startWithWindowsSwitch.set(actual);
     });
   }
+
+  el.removeWaterBtn.addEventListener("click", () => {
+    const oz = Number(el.removeOzInput.value);
+    if (oz > 0) {
+      water.onRemoveWater(oz);
+      el.removeOzInput.value = "";
+      refreshTodayLogged();
+    }
+  });
+
+  el.clearTodayBtn.addEventListener("click", () => {
+    water.onClearToday();
+    refreshTodayLogged();
+  });
 
   el.saveBtn.addEventListener("click", () => {
     void (async () => {
@@ -74,7 +115,7 @@ export function initSettingsPanel(
         snoozeMs: Number(el.snoozeInput.value) * 60_000,
         maxSnoozes: Number(el.maxSnoozesInput.value),
         volume: Number(el.volumeInput.value),
-        startWithWindows: el.startWithWindowsInput.checked,
+        startWithWindows: startWithWindowsSwitch.get(),
       };
       const result = parseSettings(candidate);
       if (!result.ok) {

@@ -1,5 +1,6 @@
 import { ALERT_STYLES, REMINDER_LABELS, type AlertStyle, type ReminderKind } from "../core/reminders";
 import type { PomodoroSettings, ReminderSettings } from "../core/settings";
+import { createSwitch } from "./switch";
 
 const ALERT_STYLE_LABELS: Record<AlertStyle, string> = {
   takeover: "Full screen",
@@ -73,13 +74,10 @@ export function mountReminderCard(
   details.open = initial.enabled;
 
   const summary = document.createElement("summary");
-  const enableInput = document.createElement("input");
-  enableInput.type = "checkbox";
-  enableInput.className = "settings-card-enable";
-  enableInput.checked = initial.enabled;
+  const enableSwitch = createSwitch(initial.enabled, () => syncEnabledState());
   const labelSpan = document.createElement("span");
   labelSpan.textContent = REMINDER_LABELS[kind];
-  summary.append(enableInput, labelSpan);
+  summary.append(enableSwitch.el, labelSpan);
 
   const body = document.createElement("div");
   body.className = "settings-card-body";
@@ -97,21 +95,20 @@ export function mountReminderCard(
   container.append(details);
 
   function syncEnabledState() {
-    body.classList.toggle("settings-card-body-disabled", !enableInput.checked);
+    body.classList.toggle("settings-card-body-disabled", !enableSwitch.get());
   }
   syncEnabledState();
-  enableInput.addEventListener("change", syncEnabledState);
 
   return {
     getValue(): ReminderSettings {
       return {
-        enabled: enableInput.checked,
+        enabled: enableSwitch.get(),
         intervalMs: Number(interval.input.value) * 60_000,
         alertStyle: segmented.get(),
       };
     },
     setValue(value: ReminderSettings) {
-      enableInput.checked = value.enabled;
+      enableSwitch.set(value.enabled);
       interval.input.value = String(value.intervalMs / 60_000);
       segmented.set(value.alertStyle);
       syncEnabledState();
@@ -168,13 +165,10 @@ export function mountPomodoroCard(container: HTMLElement, initial: PomodoroSetti
   details.open = initial.enabled;
 
   const summary = document.createElement("summary");
-  const enableInput = document.createElement("input");
-  enableInput.type = "checkbox";
-  enableInput.className = "settings-card-enable";
-  enableInput.checked = initial.enabled;
+  const enableSwitch = createSwitch(initial.enabled, () => syncEnabledState());
   const labelSpan = document.createElement("span");
   labelSpan.textContent = "Pomodoro";
-  summary.append(enableInput, labelSpan);
+  summary.append(enableSwitch.el, labelSpan);
 
   const body = document.createElement("div");
   body.className = "settings-card-body";
@@ -193,22 +187,21 @@ export function mountPomodoroCard(container: HTMLElement, initial: PomodoroSetti
   container.append(details);
 
   function syncEnabledState() {
-    body.classList.toggle("settings-card-body-disabled", !enableInput.checked);
+    body.classList.toggle("settings-card-body-disabled", !enableSwitch.get());
   }
   syncEnabledState();
-  enableInput.addEventListener("change", syncEnabledState);
 
   return {
     getValue(): PomodoroSettings {
       return {
-        enabled: enableInput.checked,
+        enabled: enableSwitch.get(),
         focusMs: focus.get() * 60_000,
         breakMs: rest.get() * 60_000,
         alertStyle: segmented.get(),
       };
     },
     setValue(value: PomodoroSettings) {
-      enableInput.checked = value.enabled;
+      enableSwitch.set(value.enabled);
       focus.set((value.focusMs / 60_000) as 25 | 55);
       rest.set((value.breakMs / 60_000) as 5 | 15);
       segmented.set(value.alertStyle);

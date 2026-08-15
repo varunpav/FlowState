@@ -1,3 +1,9 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 :root {
   --tan-bg: #f5ecda;
   --tan-surface: #fbf5e8;
@@ -108,7 +114,6 @@ h1 {
   border-radius: var(--radius);
   padding: 1.2em 1.4em;
   width: 100%;
-  box-sizing: border-box;
 }
 
 .hero {
@@ -126,6 +131,10 @@ h1 {
   font-size: 2.6em;
   font-variant-numeric: tabular-nums;
   color: var(--blue-dark);
+}
+
+.hero-paused {
+  opacity: 0.55;
 }
 
 .reminder-chips {
@@ -327,12 +336,31 @@ h1 {
   accent-color: var(--blue);
 }
 
+.pause-btn {
+  font-size: 0.85em;
+  padding: 0.5em 1em;
+  white-space: nowrap;
+}
+
+.pause-btn-active {
+  background-color: var(--blue);
+  color: var(--tan-surface);
+  border-color: var(--blue-dark);
+}
+
+.pause-btn-active:hover {
+  background-color: var(--blue-dark);
+}
+
+.debug-row {
+  margin-top: 0.4em;
+}
+
 .ghost-btn {
   background: transparent;
   border-color: transparent;
   color: var(--ink-soft);
   font-size: 0.85em;
-  margin-top: 0.4em;
 }
 
 .ghost-btn:hover {
@@ -438,7 +466,6 @@ h1 {
   gap: 0.7em;
   /* Darker than the page background for stronger contrast/emphasis on this view. */
   color: var(--ink);
-  box-sizing: border-box;
 }
 
 .settings-view[hidden] {
@@ -488,9 +515,47 @@ h1 {
   display: none;
 }
 
-.settings-card-enable {
-  width: auto;
-  accent-color: var(--blue);
+.switch {
+  position: relative;
+  width: 2.4em;
+  height: 1.4em;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--tan-border);
+  background-color: var(--tan-bg);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 1.1em;
+  height: 1.1em;
+  border-radius: 50%;
+  background-color: var(--tan-surface);
+  box-shadow: 0 1px 3px rgba(55, 48, 31, 0.3);
+  transition: transform 0.15s;
+}
+
+.switch-on {
+  background-color: var(--blue);
+  border-color: var(--blue-dark);
+}
+
+.switch-on .switch-thumb {
+  transform: translateX(1em);
+  background-color: var(--tan-surface);
+}
+
+.switch:hover {
+  background-color: var(--blue-light);
+}
+
+.switch-on:hover {
+  background-color: var(--blue-dark);
 }
 
 .settings-card-body {

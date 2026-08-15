@@ -20,11 +20,20 @@
         <h1>Flow State</h1>
       </div>
 
-      <div class="hero">
+      <div class="hero" id="hero">
         <p class="hero-label" id="hero-label">No reminders armed</p>
         <p class="hero-countdown" id="hero-countdown"></p>
       </div>
       <div class="reminder-chips" id="reminder-chips"></div>
+
+      <div class="card interval-card">
+        <label class="interval-slider-label" for="hydration-interval-slider">Start timer</label>
+        <div class="row">
+          <input id="hydration-interval-slider" type="range" min="5" max="240" step="5" value="120" />
+          <span id="hydration-interval-value" class="interval-slider-value">120 min</span>
+          <button id="pause-toggle" type="button" class="pause-btn">Pause</button>
+        </div>
+      </div>
 
       <div class="card water-card">
         <div class="water-card-row">
@@ -39,15 +48,17 @@
         <p class="water-range-stat" id="water-year-stats"></p>
       </div>
 
-      <div class="card interval-card">
-        <label class="interval-slider-label" for="hydration-interval-slider">Start timer</label>
-        <div class="row">
-          <input id="hydration-interval-slider" type="range" min="5" max="240" step="5" value="120" />
-          <span id="hydration-interval-value" class="interval-slider-value">120 min</span>
-        </div>
+      <div class="row debug-row">
+        <button id="test-alert" type="button" class="ghost-btn">Test alert in 10s</button>
+        <button
+          id="test-notification"
+          type="button"
+          class="ghost-btn"
+          title="Windows toasts only fire from an installed build — this is a silent no-op under `tauri dev`."
+        >
+          Test notification
+        </button>
       </div>
-
-      <button id="test-alert" type="button" class="ghost-btn">Test alert in 10s</button>
     </main>
 
     <section class="settings-view" id="settings-view" hidden>
@@ -69,6 +80,14 @@
             Daily goal (oz)
             <input id="settings-daily-goal-oz" type="number" min="1" />
           </label>
+          <p class="settings-field" id="settings-today-logged">Today logged: 0 oz</p>
+          <div class="row">
+            <input id="settings-remove-oz" type="number" min="1" placeholder="oz" class="water-entry-custom-input" />
+            <button id="settings-remove-water" type="button">Remove</button>
+          </div>
+          <div class="row">
+            <button id="settings-clear-today" type="button">Clear today</button>
+          </div>
         </div>
       </details>
 
@@ -97,7 +116,7 @@
         <summary>System</summary>
         <div class="settings-card-body">
           <label class="settings-field settings-field-checkbox">
-            <input id="settings-start-with-windows" type="checkbox" />
+            <span id="settings-start-with-windows-switch"></span>
             Start with Windows
           </label>
         </div>

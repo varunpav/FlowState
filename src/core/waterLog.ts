@@ -49,6 +49,20 @@ export function logWater(log: DailyLog, dayKey: string, oz: number): DailyLog {
   return { ...log, [dayKey]: { oz: prev.oz + oz, count: prev.count + 1 } };
 }
 
+/**
+ * Both fields floor at 0 — removing more than was logged must land on 0,
+ * never negative. A negative day would corrupt `rangeStats`' average and
+ * `goalStreak`'s >= comparison downstream.
+ */
+export function removeWater(log: DailyLog, dayKey: string, oz: number): DailyLog {
+  const prev = entryOn(log, dayKey);
+  return { ...log, [dayKey]: { oz: Math.max(0, prev.oz - oz), count: Math.max(0, prev.count - 1) } };
+}
+
+export function clearDay(log: DailyLog, dayKey: string): DailyLog {
+  return { ...log, [dayKey]: { oz: 0, count: 0 } };
+}
+
 export interface DayBar {
   dayKey: string;
   entry: DayEntry;

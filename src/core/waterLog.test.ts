@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  clearDay,
   dayKeyOf,
   entryOn,
   goalStreak,
@@ -9,6 +10,7 @@ import {
   monthToDate,
   normalizeLog,
   rangeStats,
+  removeWater,
   yearToDate,
   type DailyLog,
 } from "./waterLog";
@@ -67,6 +69,39 @@ describe("logWater / entryOn", () => {
 
   it("starts a fresh day at the logged amount", () => {
     expect(logWater({}, "2026-01-15", 24)["2026-01-15"]).toEqual({ oz: 24, count: 1 });
+  });
+});
+
+describe("removeWater", () => {
+  it("subtracts oz and decrements count, without mutating the input", () => {
+    const log: DailyLog = { "2026-01-15": { oz: 72, count: 3 } };
+    const next = removeWater(log, "2026-01-15", 24);
+    expect(next["2026-01-15"]).toEqual({ oz: 48, count: 2 });
+    expect(log["2026-01-15"]).toEqual({ oz: 72, count: 3 });
+  });
+
+  it("floors oz and count at 0 rather than going negative", () => {
+    const log: DailyLog = { "2026-01-15": { oz: 10, count: 0 } };
+    expect(removeWater(log, "2026-01-15", 24)).toEqual({ "2026-01-15": { oz: 0, count: 0 } });
+  });
+
+  it("is a no-op-shaped zero result on an unlogged day", () => {
+    expect(removeWater({}, "2026-01-15", 10)).toEqual({ "2026-01-15": { oz: 0, count: 0 } });
+  });
+});
+
+describe("clearDay", () => {
+  it("zeroes out a day's oz and count without mutating the input", () => {
+    const log: DailyLog = { "2026-01-15": { oz: 96, count: 4 } };
+    const next = clearDay(log, "2026-01-15");
+    expect(next["2026-01-15"]).toEqual({ oz: 0, count: 0 });
+    expect(log["2026-01-15"]).toEqual({ oz: 96, count: 4 });
+  });
+
+  it("leaves other days untouched", () => {
+    const log: DailyLog = { "2026-01-14": { oz: 50, count: 2 }, "2026-01-15": { oz: 96, count: 4 } };
+    const next = clearDay(log, "2026-01-15");
+    expect(next["2026-01-14"]).toEqual({ oz: 50, count: 2 });
   });
 });
 

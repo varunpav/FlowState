@@ -10,6 +10,7 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 export interface HomeViewElements {
+  heroEl: HTMLElement;
   heroLabelEl: HTMLElement;
   heroCountdownEl: HTMLElement;
   chipsEl: HTMLElement;
@@ -21,7 +22,9 @@ export interface HomeViewElements {
   waterEntryContainerEl: HTMLElement;
   intervalSliderEl: HTMLInputElement;
   intervalSliderValueEl: HTMLElement;
+  pauseBtn: HTMLButtonElement;
   testAlertBtn: HTMLButtonElement;
+  testNotificationBtn: HTMLButtonElement;
 }
 
 export interface HomeViewOptions {
@@ -29,7 +32,9 @@ export interface HomeViewOptions {
   onWaterLogged: (oz: number, nowMs: number) => void;
   /** Slider is bound to `change`, not `input` — firing per-pixel would restart the countdown continuously. */
   onIntervalChanged: (minutes: number) => void;
+  onPauseToggle: () => void;
   onTestAlert: () => void;
+  onTestNotification: () => void;
 }
 
 export interface HomeView {
@@ -37,6 +42,7 @@ export interface HomeView {
   renderWater(log: DailyLog, todayKey: string, goalOz: number): void;
   setBottleOz(oz: number): void;
   setIntervalMinutes(minutes: number): void;
+  setPaused(paused: boolean): void;
 }
 
 function buildRing(container: HTMLElement): { setProgress(fraction: number): void; setLabel(text: string): void } {
@@ -139,6 +145,7 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
   const waterEntry: WaterEntryHandle = mountWaterEntry(el.waterEntryContainerEl, options.bottleOz, (oz) =>
     options.onWaterLogged(oz, Date.now()),
   );
+  let paused = false;
 
   el.intervalSliderEl.addEventListener("change", () => {
     const minutes = Number(el.intervalSliderEl.value);
@@ -150,12 +157,17 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
     el.intervalSliderValueEl.textContent = `${el.intervalSliderEl.value} min`;
   });
 
+  el.pauseBtn.addEventListener("click", () => options.onPauseToggle());
   el.testAlertBtn.addEventListener("click", () => options.onTestAlert());
+  el.testNotificationBtn.addEventListener("click", () => options.onTestNotification());
 
   return {
     renderReminders(armed: ArmedReminder[]) {
       const hero = nextDue(armed);
-      if (!hero) {
+      if (paused) {
+        el.heroLabelEl.textContent = "Paused";
+        el.heroCountdownEl.textContent = "";
+      } else if (!hero) {
         el.heroLabelEl.textContent = "No reminders armed";
         el.heroCountdownEl.textContent = "";
       } else {
@@ -204,6 +216,13 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
     setIntervalMinutes(minutes: number) {
       el.intervalSliderEl.value = String(minutes);
       el.intervalSliderValueEl.textContent = `${minutes} min`;
+    },
+
+    setPaused(next: boolean) {
+      paused = next;
+      el.pauseBtn.textContent = next ? "Resume" : "Pause";
+      el.pauseBtn.classList.toggle("pause-btn-active", next);
+      el.heroEl.classList.toggle("hero-paused", next);
     },
   };
 }

@@ -1,12 +1,16 @@
 export interface WaterEntryHandle {
   setBottleOz(oz: number): void;
+  /** Empties the composed field — called each time the hydration takeover reopens. */
+  reset(): void;
 }
 
 /**
- * Rebuilds a quick-add water widget into `container` — bottle-size button,
- * half-bottle button, and a custom-amount field. Mounted twice (home page,
- * hydration takeover) with independent `onLog` callbacks, so this is a
- * plain builder rather than a singleton component.
+ * Rebuilds a quick-add water widget into `container` — bottle-size and
+ * half-bottle buttons *compose* an amount into the field (so clicking +24
+ * twice reads 48), and Add is the only thing that commits it to the daily
+ * total. Mounted twice (home page, hydration takeover) with independent
+ * `onLog` callbacks, so this is a plain builder rather than a singleton
+ * component.
  */
 export function mountWaterEntry(
   container: HTMLElement,
@@ -26,7 +30,7 @@ export function mountWaterEntry(
   const customInput = document.createElement("input");
   customInput.type = "number";
   customInput.min = "1";
-  customInput.placeholder = "oz";
+  customInput.placeholder = "Custom oz";
   customInput.className = "water-entry-custom-input";
 
   const customBtn = document.createElement("button");
@@ -50,25 +54,47 @@ export function mountWaterEntry(
   }
   render();
 
-  function submitCustom() {
+  function currentValue(): number {
     const value = Number(customInput.value);
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function syncAddDisabled() {
+    customBtn.disabled = currentValue() <= 0;
+  }
+
+  function addToField(amount: number) {
+    customInput.value = String(currentValue() + amount);
+    syncAddDisabled();
+  }
+
+  function submitCustom() {
+    const value = currentValue();
     if (value > 0) {
       onLog(value);
       customInput.value = "";
+      syncAddDisabled();
     }
   }
 
-  quickBtn.addEventListener("click", () => onLog(bottleOz));
-  halfBtn.addEventListener("click", () => onLog(Math.round(bottleOz / 2)));
+  quickBtn.addEventListener("click", () => addToField(bottleOz));
+  halfBtn.addEventListener("click", () => addToField(Math.round(bottleOz / 2)));
   customBtn.addEventListener("click", submitCustom);
+  customInput.addEventListener("input", syncAddDisabled);
   customInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") submitCustom();
   });
+
+  syncAddDisabled();
 
   return {
     setBottleOz(oz: number) {
       bottleOz = oz;
       render();
+    },
+    reset() {
+      customInput.value = "";
+      syncAddDisabled();
     },
   };
 }
