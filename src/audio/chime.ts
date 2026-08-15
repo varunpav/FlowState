@@ -2,6 +2,8 @@ export interface ChimeHandle {
   start(): void;
   stop(): void;
   setVolume(volume: number): void;
+  /** Resumes the AudioContext without scheduling any audible notes. */
+  unlock(): void;
 }
 
 const NOTE_A5 = 880;
@@ -12,8 +14,13 @@ const CHIME_PERIOD_MS = 3000;
  * A synthesized two-note chime — no binary asset needed, volume is a plain
  * gain multiplier. `hydration-due` arrives via an IPC event, not a user
  * gesture, so the shared AudioContext this returns must be unlocked earlier
- * by a real click (see main.ts's pointerdown listener) or Chromium's
- * autoplay policy can silently block playback the first time it's needed.
+ * by a real click (see main.ts's pointerdown listener calling `unlock()`) or
+ * Chromium's autoplay policy can silently block playback the first time it's
+ * needed. `unlock()` resumes the context without scheduling any notes —
+ * calling `start()` immediately followed by `stop()` is NOT silent, since
+ * `start()` schedules real notes onto the AudioContext timeline synchronously
+ * and `stop()` only prevents the *next* loop iteration, not those already
+ * scheduled.
  */
 export function createChime(initialVolume: number): ChimeHandle {
   let ctx: AudioContext | null = null;
@@ -72,6 +79,10 @@ export function createChime(initialVolume: number): ChimeHandle {
     setVolume(next: number) {
       volume = clamp01(next);
       if (masterGain) masterGain.gain.value = volume;
+    },
+    unlock() {
+      const { ctx: c } = ensureContext();
+      if (c.state === "suspended") void c.resume();
     },
   };
 }

@@ -14,7 +14,12 @@ export interface Takeover {
   show(): void;
 }
 
-export function initTakeover(el: TakeoverElements, settings: Settings, chime: ChimeHandle): Takeover {
+export function initTakeover(
+  el: TakeoverElements,
+  settings: Settings,
+  chime: ChimeHandle,
+  onConfirmed: (nowMs: number) => void,
+): Takeover {
   let snoozeState: SnoozeState = resetSnoozeState();
 
   function syncSnoozeAvailability() {
@@ -31,9 +36,10 @@ export function initTakeover(el: TakeoverElements, settings: Settings, chime: Ch
 
   el.confirmBtn.addEventListener("click", () => {
     void (async () => {
+      const now = Date.now();
       await releaseTakeover();
       snoozeState = resetSnoozeState();
-      // TODO(phase 5): streak.updateLog(...) once persistence exists.
+      onConfirmed(now);
       await setRemainingMs(settings.intervalMs);
       hide();
     })();

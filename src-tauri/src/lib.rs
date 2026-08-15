@@ -79,6 +79,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .manage(SchedulerState::default())
         .invoke_handler(tauri::generate_handler![
             set_remaining_ms,
@@ -87,6 +88,12 @@ pub fn run() {
             release_takeover
         ])
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                Some(vec!["--minimized"]),
+            ))?;
+
             let state = app.state::<SchedulerState>();
             if let Ok(store) = app.store(SETTINGS_STORE) {
                 let restored = store.get(REMAINING_MS_KEY).and_then(|v| v.as_i64());

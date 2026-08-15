@@ -101,6 +101,12 @@ h1 {
   color: var(--blue-dark);
 }
 
+.streak-display {
+  color: var(--ink-soft);
+  font-size: 0.9em;
+  margin: 0 0 1em 0;
+}
+
 .inactive-overlay {
   position: fixed;
   inset: 0;
@@ -222,6 +228,16 @@ h1 {
 
 .settings-field input {
   width: 100%;
+}
+
+.settings-field-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.settings-field-checkbox input {
+  width: auto;
 }
 
 .settings-error {

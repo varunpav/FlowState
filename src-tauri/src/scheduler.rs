@@ -31,6 +31,7 @@ use serde::Serialize;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, Runtime, UserAttentionType};
+use tauri_plugin_notification::NotificationExt;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,6 +169,15 @@ fn tick<R: Runtime>(app: &AppHandle<R>) {
         // that event — can never race the window not being
         // fullscreen/on-top yet.
         perform_takeover(app);
+        // Secondary surface only — per Tauri's own docs, Windows toasts only
+        // work for installed apps, so this is a no-op under `tauri dev`. The
+        // in-app chime (src/audio/chime.ts) is the primary, always-on alarm.
+        let _ = app
+            .notification()
+            .builder()
+            .title("Flow State")
+            .body("Time to hydrate")
+            .show();
         let _ = app.emit("hydration-due", HydrationDuePayload { due_at_ms: now });
     }
 }

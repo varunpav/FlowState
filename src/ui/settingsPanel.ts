@@ -1,3 +1,4 @@
+import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import type { ChimeHandle } from "../audio/chime";
 import { parseSettings, type Settings } from "../core/settings";
 import { saveSettings } from "../settingsStore";
@@ -10,6 +11,7 @@ export interface SettingsPanelElements {
   snoozeInput: HTMLInputElement;
   maxSnoozesInput: HTMLInputElement;
   volumeInput: HTMLInputElement;
+  startWithWindowsInput: HTMLInputElement;
 }
 
 export interface SettingsPanel {
@@ -35,6 +37,12 @@ export function initSettingsPanel(
     el.maxSnoozesInput.value = String(settings.maxSnoozes);
     el.volumeInput.value = String(settings.volume);
     el.errorEl.hidden = true;
+    // The OS registry is the source of truth, not the persisted flag — it
+    // can drift if the user removes the entry via Task Manager's Startup
+    // tab without ever touching this app's settings.
+    void isEnabled().then((actual) => {
+      el.startWithWindowsInput.checked = actual;
+    });
   }
 
   el.saveBtn.addEventListener("click", () => {
@@ -44,7 +52,7 @@ export function initSettingsPanel(
         snoozeMs: Number(el.snoozeInput.value) * 60_000,
         maxSnoozes: Number(el.maxSnoozesInput.value),
         volume: Number(el.volumeInput.value),
-        startWithWindows: settings.startWithWindows,
+        startWithWindows: el.startWithWindowsInput.checked,
       };
       const result = parseSettings(candidate);
       if (!result.ok) {
@@ -52,6 +60,13 @@ export function initSettingsPanel(
         el.errorEl.hidden = false;
         return;
       }
+
+      if (result.value.startWithWindows) {
+        await enable();
+      } else {
+        await disable();
+      }
+
       Object.assign(settings, result.value);
       chime.setVolume(settings.volume);
       await saveSettings(settings);
