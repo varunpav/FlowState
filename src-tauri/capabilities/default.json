@@ -6,7 +6,9 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "store:default",
     "core:window:allow-show",
+    "core:window:allow-hide",
     "core:window:allow-unminimize",
     "core:window:allow-set-always-on-top",
     "core:window:allow-set-fullscreen",

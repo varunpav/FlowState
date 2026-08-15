@@ -2,8 +2,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createChime } from "./audio/chime";
 import { INACTIVITY_THRESHOLD_SECONDS, isIdle } from "./core/idlePolicy";
 import { formatCountdown } from "./core/schedule";
-import { DEFAULT_SETTINGS } from "./core/settings";
 import { getState, onHydrationDue, onTick, setPauseThresholdSeconds, setRemainingMs } from "./ipc";
+import { loadSettings } from "./settingsStore";
+import { initSettingsPanel } from "./ui/settingsPanel";
 import { initTakeover } from "./ui/takeover";
 
 let countdownEl: HTMLElement | null;
@@ -34,7 +35,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   inactiveOverlayEl = document.querySelector("#inactive-overlay");
   inactiveSecondsEl = document.querySelector("#inactive-seconds");
 
-  const chime = createChime(DEFAULT_SETTINGS.volume);
+  const homeViewEl = document.querySelector<HTMLElement>("#home-view")!;
+  const settingsViewEl = document.querySelector<HTMLElement>("#settings-view")!;
+  const tabHomeBtn = document.querySelector<HTMLButtonElement>("#tab-home")!;
+  const tabSettingsBtn = document.querySelector<HTMLButtonElement>("#tab-settings")!;
+
+  function showTab(tab: "home" | "settings") {
+    homeViewEl.hidden = tab !== "home";
+    settingsViewEl.hidden = tab !== "settings";
+    tabHomeBtn.classList.toggle("tab-btn-active", tab === "home");
+    tabSettingsBtn.classList.toggle("tab-btn-active", tab === "settings");
+  }
+
+  const settings = await loadSettings();
+
+  const chime = createChime(settings.volume);
   // hydration-due fires from an IPC event, not a user gesture, so the shared
   // AudioContext needs unlocking from a real click before that — silently
   // start-then-stop it on the first click anywhere in the app.
@@ -54,9 +69,30 @@ window.addEventListener("DOMContentLoaded", async () => {
       snoozeBtn: document.querySelector("#takeover-snooze")!,
       snoozeHintEl: document.querySelector("#takeover-snooze-hint")!,
     },
-    DEFAULT_SETTINGS,
+    settings,
     chime,
   );
+
+  const settingsPanel = initSettingsPanel(
+    {
+      saveBtn: document.querySelector("#settings-save")!,
+      testSoundBtn: document.querySelector("#settings-test-sound")!,
+      errorEl: document.querySelector("#settings-error")!,
+      intervalInput: document.querySelector("#settings-interval")!,
+      snoozeInput: document.querySelector("#settings-snooze")!,
+      maxSnoozesInput: document.querySelector("#settings-max-snoozes")!,
+      volumeInput: document.querySelector("#settings-volume")!,
+    },
+    settings,
+    chime,
+    () => showTab("home"),
+  );
+
+  tabHomeBtn.addEventListener("click", () => showTab("home"));
+  tabSettingsBtn.addEventListener("click", () => {
+    settingsPanel.refresh();
+    showTab("settings");
+  });
 
   await setPauseThresholdSeconds(INACTIVITY_THRESHOLD_SECONDS);
 

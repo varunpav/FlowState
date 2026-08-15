@@ -9,7 +9,12 @@
   </head>
 
   <body>
-    <main class="container">
+    <nav class="tabs">
+      <button id="tab-home" type="button" class="tab-btn tab-btn-active">Home</button>
+      <button id="tab-settings" type="button" class="tab-btn">Settings</button>
+    </nav>
+
+    <main class="container" id="home-view">
       <div class="brand">
         <img src="/src/assets/logo.svg" alt="Flow State" />
         <h1>Flow State</h1>
@@ -25,6 +30,34 @@
         <button id="fire-in-10s" type="button">Debug: fire in 10s</button>
       </div>
     </main>
+
+    <section class="settings-view" id="settings-view" hidden>
+      <h2 class="settings-title">Settings</h2>
+
+      <label class="settings-field">
+        Interval (minutes)
+        <input id="settings-interval" type="number" min="1" />
+      </label>
+      <label class="settings-field">
+        Snooze length (minutes)
+        <input id="settings-snooze" type="number" min="1" />
+      </label>
+      <label class="settings-field">
+        Max snoozes
+        <input id="settings-max-snoozes" type="number" min="0" step="1" />
+      </label>
+      <label class="settings-field">
+        Volume
+        <input id="settings-volume" type="range" min="0" max="1" step="0.05" />
+      </label>
+
+      <p class="settings-error" id="settings-error" hidden></p>
+
+      <div class="row">
+        <button id="settings-test-sound" type="button">Test sound</button>
+        <button id="settings-save" type="button" class="takeover-confirm">Save</button>
+      </div>
+    </section>
 
     <div id="inactive-overlay" class="inactive-overlay" hidden>
       <p class="inactive-text">

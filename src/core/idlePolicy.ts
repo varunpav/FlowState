@@ -7,7 +7,7 @@
  * runs and the UI shows nothing special; at or beyond it, the countdown
  * pauses and the UI shows the full-page Inactive overlay.
  */
-export const INACTIVITY_THRESHOLD_SECONDS = 5;
+export const INACTIVITY_THRESHOLD_SECONDS = 30;
 
 export function isIdle(
   idleSeconds: number,

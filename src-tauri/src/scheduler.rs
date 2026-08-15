@@ -54,7 +54,7 @@ impl Default for SchedulerInner {
             // Mirrors src/core/idlePolicy.ts's INACTIVITY_THRESHOLD_SECONDS
             // until set_pause_threshold_seconds is called (main.ts does this
             // once at startup).
-            pause_threshold_seconds: 5,
+            pause_threshold_seconds: 30,
             phase: Phase::default(),
             last_tick_ms: 0,
         }
@@ -99,6 +99,17 @@ pub fn is_paused(idle_seconds: u64, pause_threshold_seconds: u64) -> bool {
 
 pub fn decrement(remaining_ms: i64, elapsed_ms: i64) -> i64 {
     remaining_ms - elapsed_ms
+}
+
+/// Shared by the `set_remaining_ms` command and the tray's Snooze/Pause menu
+/// items, so there's one place that touches `remaining_ms`. Deliberately
+/// doesn't touch `phase`: tick()'s Idle arm is the only one that reads
+/// remaining_ms, so setting it during TakeoverActive is harmless — it sits
+/// inert until release_takeover() returns to Idle.
+pub fn set_remaining(state: &SchedulerState, ms: Option<i64>) {
+    let mut guard = state.inner.lock().unwrap();
+    guard.remaining_ms = ms;
+    guard.last_tick_ms = now_ms();
 }
 
 pub fn spawn_ticker<R: Runtime>(app: AppHandle<R>) {
@@ -187,8 +198,10 @@ pub fn release_takeover<R: Runtime>(app: &AppHandle<R>, state: &SchedulerState) 
         let _ = window.request_user_attention(None);
         let _ = window.set_fullscreen(false);
         let _ = window.set_always_on_top(false);
-        // Deliberately no hide() — there's no tray yet (Phase 4), so hiding
-        // would leave no way to reopen the window.
+        // Deliberately no hide() — confirm/snooze should leave the window
+        // exactly where it was (a normal window), not banish it to the
+        // tray. hide() is reserved for the close-to-tray behavior in
+        // lib.rs's window CloseRequested handler.
     }
 }
 
@@ -219,5 +232,14 @@ mod tests {
     #[test]
     fn decrement_exactly_at_zero_counts_as_crossed() {
         assert_eq!(decrement(1_000, 1_000), 0);
+    }
+
+    #[test]
+    fn set_remaining_writes_through_to_state() {
+        let state = SchedulerState::default();
+        set_remaining(&state, Some(5_000));
+        assert_eq!(state.inner.lock().unwrap().remaining_ms, Some(5_000));
+        set_remaining(&state, None);
+        assert_eq!(state.inner.lock().unwrap().remaining_ms, None);
     }
 }

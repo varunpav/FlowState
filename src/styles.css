@@ -27,15 +27,44 @@ body {
   background-color: var(--tan-bg);
 }
 
+.tabs {
+  display: flex;
+  justify-content: center;
+  gap: 0.5em;
+  padding: 1em 0 0 0;
+}
+
+.tab-btn {
+  border-radius: 8px 8px 0 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.tab-btn:hover {
+  background-color: var(--blue-light);
+}
+
+.tab-btn-active {
+  color: var(--blue-dark);
+  border-color: var(--tan-border);
+  border-bottom-color: var(--tan-bg);
+  background-color: var(--tan-surface);
+}
+
 .container {
   margin: 0;
-  padding-top: 8vh;
+  padding-top: 6vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
   gap: 0.5em;
+}
+
+.container[hidden] {
+  display: none;
 }
 
 .brand {
@@ -156,6 +185,47 @@ h1 {
 
 .takeover-hint {
   color: var(--ink-soft);
+  font-size: 0.85em;
+  margin: 0;
+}
+
+.settings-view {
+  margin: 0 auto;
+  max-width: 24em;
+  padding-top: 6vh;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.8em;
+  /* Darker than the page background for stronger contrast/emphasis on this view. */
+  color: var(--ink);
+}
+
+.settings-view[hidden] {
+  display: none;
+}
+
+.settings-title {
+  margin: 0 0 0.2em 0;
+  text-align: center;
+  color: var(--blue-dark);
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  font-size: 0.9em;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.settings-field input {
+  width: 100%;
+}
+
+.settings-error {
+  color: #a13a3a;
   font-size: 0.85em;
   margin: 0;
 }
