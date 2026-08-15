@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
+export type Phase = "idle" | "takeoverActive";
+
 export interface TickPayload {
   nowMs: number;
   idleSeconds: number;
-  deadlineMs: number | null;
   remainingMs: number | null;
+  phase: Phase;
 }
 
 export interface HydrationDuePayload {
@@ -13,21 +15,26 @@ export interface HydrationDuePayload {
 }
 
 export interface AppStateSnapshot {
-  deadlineMs: number | null;
+  remainingMs: number | null;
   idleSeconds: number;
   nowMs: number;
+  phase: Phase;
 }
 
-export function setDeadline(atMs: number | null): Promise<void> {
-  return invoke("set_deadline", { atMs });
+export function setRemainingMs(ms: number | null): Promise<void> {
+  return invoke("set_remaining_ms", { ms });
 }
 
 export function getState(): Promise<AppStateSnapshot> {
   return invoke("get_state");
 }
 
-export function confirmHydration(): Promise<void> {
-  return invoke("confirm_hydration");
+export function setPauseThresholdSeconds(seconds: number): Promise<void> {
+  return invoke("set_pause_threshold_seconds", { seconds });
+}
+
+export function releaseTakeover(): Promise<void> {
+  return invoke("release_takeover");
 }
 
 export function onTick(handler: (payload: TickPayload) => void): Promise<UnlistenFn> {

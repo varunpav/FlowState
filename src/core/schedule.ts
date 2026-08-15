@@ -1,15 +1,3 @@
-export interface ScheduleSettings {
-  intervalMs: number;
-}
-
-export function computeNextDeadline(settings: ScheduleSettings, now: number): number {
-  return now + settings.intervalMs;
-}
-
-export function remainingMs(deadline: number, now: number): number {
-  return Math.max(0, deadline - now);
-}
-
 export function formatCountdown(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);

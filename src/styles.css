@@ -72,19 +72,92 @@ h1 {
   color: var(--blue-dark);
 }
 
-.idle {
-  color: var(--ink-soft);
-  margin: 0 0 1em 0;
-  font-size: 0.9em;
+.inactive-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(55, 48, 31, 0.35);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
-.due {
+.inactive-overlay[hidden] {
+  display: none;
+}
+
+.inactive-text {
+  color: var(--tan-surface);
+  font-size: 1.6em;
+  text-align: center;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
+.inactive-hint {
+  font-size: 0.55em;
+  color: var(--tan-surface);
+  opacity: 0.85;
+}
+
+.takeover-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tan-bg);
+}
+
+.takeover-overlay[hidden] {
+  display: none;
+}
+
+.takeover-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6em;
+  text-align: center;
+  background: var(--tan-surface);
+  border: 1px solid var(--tan-border);
+  border-radius: 16px;
+  padding: 3em 3.5em;
+  box-shadow: 0 12px 40px rgba(29, 95, 128, 0.18);
+}
+
+.takeover-logo {
+  width: 3.5em;
+  height: 3.5em;
+}
+
+.takeover-title {
+  margin: 0;
+  font-size: 1.8em;
   color: var(--blue-dark);
-  font-weight: 600;
-  background: var(--blue-light);
-  border: 1px solid var(--blue);
-  border-radius: 10px;
-  padding: 0.6em 1em;
+}
+
+.takeover-confirm {
+  background-color: var(--blue);
+  color: var(--tan-surface);
+  border-color: var(--blue-dark);
+}
+
+.takeover-confirm:hover {
+  background-color: var(--blue-dark);
+}
+
+.takeover-snooze[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.takeover-hint {
+  color: var(--ink-soft);
+  font-size: 0.85em;
+  margin: 0;
 }
 
 input,

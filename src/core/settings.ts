@@ -3,8 +3,6 @@ export interface Settings {
   snoozeMs: number;
   maxSnoozes: number;
   volume: number;
-  idleDeferThresholdSeconds: number;
-  idleResumeThresholdSeconds: number;
   startWithWindows: boolean;
 }
 
@@ -17,8 +15,6 @@ export const DEFAULT_SETTINGS: Settings = {
   snoozeMs: 5 * 60 * 1000,
   maxSnoozes: 3,
   volume: 0.7,
-  idleDeferThresholdSeconds: 15 * 60,
-  idleResumeThresholdSeconds: 60,
   startWithWindows: false,
 };
 
@@ -46,12 +42,6 @@ export function parseSettings(input: unknown): ParseSettingsResult {
   const snoozeMs = requireNumber(obj, "snoozeMs", issues, { min: 1_000 });
   const maxSnoozes = requireNumber(obj, "maxSnoozes", issues, { min: 0, integer: true });
   const volume = requireNumber(obj, "volume", issues, { min: 0, max: 1 });
-  const idleDeferThresholdSeconds = requireNumber(obj, "idleDeferThresholdSeconds", issues, {
-    min: 0,
-  });
-  const idleResumeThresholdSeconds = requireNumber(obj, "idleResumeThresholdSeconds", issues, {
-    min: 0,
-  });
 
   const startWithWindowsRaw = obj["startWithWindows"];
   if (typeof startWithWindowsRaw !== "boolean") {
@@ -69,8 +59,6 @@ export function parseSettings(input: unknown): ParseSettingsResult {
       snoozeMs: snoozeMs as number,
       maxSnoozes: maxSnoozes as number,
       volume: volume as number,
-      idleDeferThresholdSeconds: idleDeferThresholdSeconds as number,
-      idleResumeThresholdSeconds: idleResumeThresholdSeconds as number,
       startWithWindows: startWithWindowsRaw as boolean,
     },
   };

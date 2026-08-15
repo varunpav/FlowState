@@ -1,24 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeNextDeadline, formatCountdown, remainingMs } from "./schedule";
-
-describe("computeNextDeadline", () => {
-  it("adds the interval to now", () => {
-    expect(computeNextDeadline({ intervalMs: 2 * 60 * 60 * 1000 }, 1_000)).toBe(
-      1_000 + 2 * 60 * 60 * 1000,
-    );
-  });
-});
-
-describe("remainingMs", () => {
-  it("returns the gap to the deadline", () => {
-    expect(remainingMs(10_000, 4_000)).toBe(6_000);
-  });
-
-  it("clamps to zero once the deadline has passed (suspend gap)", () => {
-    // e.g. the machine slept through the deadline by 4 hours
-    expect(remainingMs(1_000, 1_000 + 4 * 60 * 60 * 1000)).toBe(0);
-  });
-});
+import { formatCountdown } from "./schedule";
 
 describe("formatCountdown", () => {
   it("formats hours:minutes:seconds when over an hour remains", () => {

@@ -15,7 +15,6 @@
         <h1>Flow State</h1>
       </div>
       <p id="countdown" class="countdown">--:--</p>
-      <p id="idle" class="idle">idle 0s</p>
 
       <div class="row">
         <input id="interval-minutes" type="number" min="1" value="120" />
@@ -25,11 +24,25 @@
       <div class="row">
         <button id="fire-in-10s" type="button">Debug: fire in 10s</button>
       </div>
-
-      <p id="due" class="due" hidden>Hydration reminder is due — confirm below.</p>
-      <div class="row">
-        <button id="confirm" type="button">I drank water</button>
-      </div>
     </main>
+
+    <div id="inactive-overlay" class="inactive-overlay" hidden>
+      <p class="inactive-text">
+        Inactive (<span id="inactive-seconds">0</span>s)<br />
+        <span class="inactive-hint">move or type to resume</span>
+      </p>
+    </div>
+
+    <div id="takeover-overlay" class="takeover-overlay" hidden>
+      <div class="takeover-card">
+        <img src="/src/assets/logo.svg" alt="" class="takeover-logo" />
+        <h2 class="takeover-title">Time to hydrate</h2>
+        <div class="row">
+          <button id="takeover-confirm" type="button" class="takeover-confirm">I drank water</button>
+          <button id="takeover-snooze" type="button" class="takeover-snooze">Snooze 5 min</button>
+        </div>
+        <p class="takeover-hint" id="takeover-snooze-hint" hidden></p>
+      </div>
+    </div>
   </body>
 </html>
