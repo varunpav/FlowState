@@ -11,6 +11,7 @@ function buildSegmented(
   values: readonly AlertStyle[],
   initial: AlertStyle,
   labels: Record<AlertStyle, string> = ALERT_STYLE_LABELS,
+  onChange?: () => void,
 ): { el: HTMLElement; get(): AlertStyle; set(value: AlertStyle): void } {
   const el = document.createElement("div");
   el.className = "segmented";
@@ -24,6 +25,7 @@ function buildSegmented(
     btn.addEventListener("click", () => {
       current = value;
       sync();
+      onChange?.();
     });
     el.append(btn);
     return btn;
@@ -46,7 +48,11 @@ function buildSegmented(
   };
 }
 
-function buildMinutesField(labelText: string, initialMinutes: number): { el: HTMLElement; input: HTMLInputElement } {
+function buildMinutesField(
+  labelText: string,
+  initialMinutes: number,
+  onChange?: () => void,
+): { el: HTMLElement; input: HTMLInputElement } {
   const label = document.createElement("label");
   label.className = "settings-field";
   label.append(document.createTextNode(labelText));
@@ -54,6 +60,9 @@ function buildMinutesField(labelText: string, initialMinutes: number): { el: HTM
   input.type = "number";
   input.min = "1";
   input.value = String(initialMinutes);
+  // change, not input — committing per keystroke would write "2" on the way
+  // to "20" and thrash the store with invalid intermediate values.
+  input.addEventListener("change", () => onChange?.());
   label.append(input);
   return { el: label, input };
 }
@@ -68,13 +77,17 @@ export function mountReminderCard(
   container: HTMLElement,
   kind: ReminderKind,
   initial: ReminderSettings,
+  onChange?: () => void,
 ): ReminderCardHandle {
   const details = document.createElement("details");
   details.className = "settings-card";
   details.open = initial.enabled;
 
   const summary = document.createElement("summary");
-  const enableSwitch = createSwitch(initial.enabled, () => syncEnabledState());
+  const enableSwitch = createSwitch(initial.enabled, () => {
+    syncEnabledState();
+    onChange?.();
+  });
   const labelSpan = document.createElement("span");
   labelSpan.textContent = REMINDER_LABELS[kind];
   summary.append(enableSwitch.el, labelSpan);
@@ -82,12 +95,12 @@ export function mountReminderCard(
   const body = document.createElement("div");
   body.className = "settings-card-body";
 
-  const interval = buildMinutesField("Interval (minutes)", initial.intervalMs / 60_000);
+  const interval = buildMinutesField("Interval (minutes)", initial.intervalMs / 60_000, onChange);
 
   const alertLabel = document.createElement("div");
   alertLabel.className = "settings-field";
   alertLabel.append(document.createTextNode("Attention grabber"));
-  const segmented = buildSegmented(ALERT_STYLES, initial.alertStyle);
+  const segmented = buildSegmented(ALERT_STYLES, initial.alertStyle, ALERT_STYLE_LABELS, onChange);
   alertLabel.append(segmented.el);
 
   body.append(interval.el, alertLabel);
@@ -128,6 +141,7 @@ function buildChoiceField<T extends number>(
   labelText: string,
   choices: readonly T[],
   initial: T,
+  onChange?: () => void,
 ): { el: HTMLElement; get(): T; set(value: T): void } {
   const label = document.createElement("div");
   label.className = "settings-field";
@@ -144,6 +158,7 @@ function buildChoiceField<T extends number>(
     btn.addEventListener("click", () => {
       current = choice;
       sync();
+      onChange?.();
     });
     group.append(btn);
     return btn;
@@ -159,13 +174,20 @@ function buildChoiceField<T extends number>(
 }
 
 /** Pomodoro's card: enable, 25|55 focus choice, 5|15 break choice, attention-grabber style. No single interval — it alternates. */
-export function mountPomodoroCard(container: HTMLElement, initial: PomodoroSettings): PomodoroCardHandle {
+export function mountPomodoroCard(
+  container: HTMLElement,
+  initial: PomodoroSettings,
+  onChange?: () => void,
+): PomodoroCardHandle {
   const details = document.createElement("details");
   details.className = "settings-card";
   details.open = initial.enabled;
 
   const summary = document.createElement("summary");
-  const enableSwitch = createSwitch(initial.enabled, () => syncEnabledState());
+  const enableSwitch = createSwitch(initial.enabled, () => {
+    syncEnabledState();
+    onChange?.();
+  });
   const labelSpan = document.createElement("span");
   labelSpan.textContent = "Pomodoro";
   summary.append(enableSwitch.el, labelSpan);
@@ -173,13 +195,13 @@ export function mountPomodoroCard(container: HTMLElement, initial: PomodoroSetti
   const body = document.createElement("div");
   body.className = "settings-card-body";
 
-  const focus = buildChoiceField("Focus session", FOCUS_CHOICES_MIN, (initial.focusMs / 60_000) as 25 | 55);
-  const rest = buildChoiceField("Break", BREAK_CHOICES_MIN, (initial.breakMs / 60_000) as 5 | 15);
+  const focus = buildChoiceField("Focus session", FOCUS_CHOICES_MIN, (initial.focusMs / 60_000) as 25 | 55, onChange);
+  const rest = buildChoiceField("Break", BREAK_CHOICES_MIN, (initial.breakMs / 60_000) as 5 | 15, onChange);
 
   const alertLabel = document.createElement("div");
   alertLabel.className = "settings-field";
   alertLabel.append(document.createTextNode("Attention grabber"));
-  const segmented = buildSegmented(ALERT_STYLES, initial.alertStyle);
+  const segmented = buildSegmented(ALERT_STYLES, initial.alertStyle, ALERT_STYLE_LABELS, onChange);
   alertLabel.append(segmented.el);
 
   body.append(focus.el, rest.el, alertLabel);

@@ -1,6 +1,6 @@
 import type { ReminderKind } from "../core/reminders";
 import { REMINDER_LABELS } from "../core/reminders";
-import { formatCountdown } from "../core/format";
+import { formatClockTime, formatCountdown } from "../core/format";
 import { entryOn, goalStreak, lastNDays, monthToDate, yearToDate, type DailyLog } from "../core/waterLog";
 import { mountWaterEntry, type WaterEntryHandle } from "./waterEntry";
 
@@ -31,9 +31,15 @@ export interface HomeViewElements {
 export interface HomeViewOptions {
   bottleOz: number;
   onWaterLogged: (oz: number, nowMs: number) => void;
-  /** Slider is bound to `change`, not `input` — firing per-pixel would restart the countdown continuously. Next-cycle only: never clobbers a running countdown. */
+  /** Slider is bound to `change`, not `input` — firing per-pixel would spam settings writes. Only ever updates the stored value; never arms anything on its own. */
   onIntervalChanged: (minutes: number) => void;
-  /** The Start timer button — arms/restarts hydration right now, at whatever the slider currently reads, even if it's already running. */
+  /**
+   * The Start/Reset timer button — a single two-state toggle. The caller
+   * (main.ts) decides which action this is by checking whether hydration is
+   * currently armed: unarmed arms everything enabled at its slider/settings
+   * value, armed blanks everything back to unarmed. `minutes` is always the
+   * slider's current value, used only by the arm path.
+   */
   onStartTimer: (minutes: number) => void;
   onPauseToggle: () => void;
   onTestAlert: () => void;
@@ -47,11 +53,17 @@ export interface TimerRowEntry {
 }
 
 export interface HomeView {
-  /** Hero is always Hydration; `secondary` is pre-filtered to enabled kinds, in fixed order. */
-  renderTimers(hydrationMs: number | null, secondary: TimerRowEntry[]): void;
+  /**
+   * Hero is always Hydration; `secondary` is pre-filtered to enabled kinds,
+   * in fixed order. `nowMs` renders the idle-hero placeholder clock — it's
+   * ignored once hydration is armed.
+   */
+  renderTimers(hydrationMs: number | null, secondary: TimerRowEntry[], nowMs: number): void;
   renderWater(log: DailyLog, todayKey: string, goalOz: number): void;
   setBottleOz(oz: number): void;
   setIntervalMinutes(minutes: number): void;
+  /** What the slider currently reads, in minutes — lets callers avoid clobbering an in-progress edit. */
+  getIntervalMinutes(): number;
   setPaused(paused: boolean): void;
 }
 
@@ -173,11 +185,21 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
   el.testNotificationBtn.addEventListener("click", () => options.onTestNotification());
 
   return {
-    renderTimers(hydrationMs: number | null, secondary: TimerRowEntry[]) {
-      // The countdown itself stays visible while paused — only the label
-      // changes. Blanking it reads as a hang, not a pause.
-      el.heroLabelEl.textContent = paused ? "Paused" : REMINDER_LABELS.hydration;
-      el.heroCountdownEl.textContent = hydrationMs === null ? "--:--" : formatCountdown(hydrationMs);
+    renderTimers(hydrationMs: number | null, secondary: TimerRowEntry[], nowMs: number) {
+      // Unarmed: a neutral clock placeholder rather than a countdown to
+      // nothing — the hero shouldn't imply a timer is running until the
+      // user explicitly starts one. Paused keeps the countdown on screen
+      // (only the label changes) — blanking it reads as a hang, not a pause.
+      if (hydrationMs === null) {
+        el.heroLabelEl.textContent = "Not started";
+        el.heroCountdownEl.textContent = formatClockTime(nowMs);
+      } else {
+        el.heroLabelEl.textContent = paused ? "Paused" : REMINDER_LABELS.hydration;
+        el.heroCountdownEl.textContent = formatCountdown(hydrationMs);
+      }
+      // hydrationMs !== null IS "armed" — the label can never disagree with
+      // the actual timer state, unlike a separately-tracked boolean would.
+      el.startTimerBtn.textContent = hydrationMs === null ? "Start timer" : "Reset timer";
 
       el.chipsEl.replaceChildren(
         ...secondary.map((entry) => {
@@ -219,6 +241,10 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
     setIntervalMinutes(minutes: number) {
       el.intervalSliderEl.value = String(minutes);
       el.intervalSliderValueEl.textContent = `${minutes} min`;
+    },
+
+    getIntervalMinutes() {
+      return Number(el.intervalSliderEl.value);
     },
 
     setPaused(next: boolean) {

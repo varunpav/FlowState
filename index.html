@@ -95,24 +95,24 @@
             Daily goal (oz)
             <input id="settings-daily-goal-oz" type="number" min="1" />
           </label>
-          <label class="settings-field">
+          <div class="settings-field">
             Adjust log
-            <select id="settings-water-day"></select>
-          </label>
-          <p class="settings-field" id="settings-water-logged">Logged: 0 oz</p>
+            <div class="water-day-stepper">
+              <button id="settings-water-day-prev" type="button" class="water-day-stepper-arrow" aria-label="Previous day">‹</button>
+              <span id="settings-water-day-label" class="water-day-stepper-label">Today · 0 oz</span>
+              <button id="settings-water-day-next" type="button" class="water-day-stepper-arrow" aria-label="Next day">›</button>
+            </div>
+          </div>
           <div class="row">
             <input
               id="settings-water-amount"
               type="number"
               min="1"
-              placeholder="oz"
+              placeholder="Change in oz"
               class="water-entry-custom-input"
             />
-            <button id="settings-add-water" type="button">Add</button>
-            <button id="settings-remove-water" type="button">Remove</button>
-          </div>
-          <div class="row">
-            <button id="settings-clear-day" type="button">Clear day</button>
+            <button id="settings-add-water" type="button" class="water-adjust-btn">Add</button>
+            <button id="settings-remove-water" type="button" class="water-adjust-btn">Remove</button>
           </div>
         </div>
       </details>
@@ -120,6 +120,14 @@
       <details class="settings-section">
         <summary>Alerts &amp; sound</summary>
         <div class="settings-card-body">
+          <label class="settings-field settings-field-checkbox">
+            <span id="settings-idle-pause-switch"></span>
+            Pause timers during inactivity
+          </label>
+          <label class="settings-field" id="settings-idle-pause-threshold-row">
+            Inactive after (seconds)
+            <input id="settings-idle-pause-threshold" type="number" min="5" max="3600" />
+          </label>
           <label class="settings-field">
             Snooze length (minutes)
             <input id="settings-snooze" type="number" min="1" />
@@ -135,14 +143,6 @@
           <div class="row">
             <button id="settings-test-sound" type="button">Test sound</button>
           </div>
-          <label class="settings-field settings-field-checkbox">
-            <span id="settings-idle-pause-switch"></span>
-            Pause timers when I'm inactive
-          </label>
-          <label class="settings-field" id="settings-idle-pause-threshold-row">
-            Inactive after (seconds)
-            <input id="settings-idle-pause-threshold" type="number" min="5" max="3600" />
-          </label>
         </div>
       </details>
 
@@ -156,11 +156,7 @@
         </div>
       </details>
 
-      <p class="settings-error" id="settings-error" hidden></p>
-
-      <div class="row">
-        <button id="settings-save" type="button" class="takeover-confirm">Save</button>
-      </div>
+      <p class="settings-status" id="settings-status" hidden></p>
     </section>
 
     <div id="inactive-overlay" class="inactive-overlay" hidden>

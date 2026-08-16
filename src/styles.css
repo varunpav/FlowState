@@ -305,6 +305,43 @@ h1 {
   min-width: 0;
 }
 
+.water-day-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+  background: var(--tan-bg);
+  border: 1px solid var(--tan-border);
+  border-radius: var(--radius);
+  padding: 0.3em 0.4em;
+}
+
+.water-day-stepper-arrow {
+  border: none;
+  background: transparent;
+  padding: 0.3em 0.6em;
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+.water-day-stepper-arrow:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.water-day-stepper-label {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.water-adjust-btn {
+  flex: 1;
+}
+
 .interval-card {
   max-width: 26em;
   display: flex;
@@ -337,8 +374,6 @@ h1 {
 }
 
 .pause-btn {
-  font-size: 0.85em;
-  padding: 0.5em 1em;
   white-space: nowrap;
 }
 
@@ -622,10 +657,18 @@ details[open] > summary::after {
   width: auto;
 }
 
-.settings-error {
-  color: #a13a3a;
+.settings-status {
   font-size: 0.85em;
-  margin: 0;
+  margin: 0.6em 0.2em 0;
+  text-align: center;
+}
+
+.settings-status-error {
+  color: #a13a3a;
+}
+
+.settings-status-ok {
+  color: var(--ink-soft);
 }
 
 .segmented {

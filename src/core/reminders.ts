@@ -39,6 +39,15 @@ export function nextDue(armed: readonly ArmedReminder[]): ArmedReminder | null {
 export interface ReconcileInput {
   kind: ReminderKind;
   enabled: boolean;
+  /**
+   * True only for a genuine disabled->enabled transition since the last
+   * reconcile. Arming is gated on this (not just `enabled`) so a fresh
+   * launch — where nothing has "just" become enabled — never starts a
+   * countdown on its own; the user arms everything explicitly via Start
+   * timer. A reminder enabled mid-session still arms immediately, so
+   * toggling one on in Settings doesn't additionally require Start.
+   */
+  justEnabled: boolean;
   intervalMs: number;
   currentRemainingMs: number | null;
 }
@@ -50,17 +59,18 @@ export interface ReconcileAction {
 
 /**
  * Decides which reminders need a fresh arm/disarm IPC call after a settings
- * change (including at startup) — an enabled reminder with no live budget
- * gets armed with a full interval; a disabled reminder with a live budget
- * gets cleared. An already-consistent reminder produces no action, so an
- * in-progress countdown survives a settings save that didn't touch it, and
- * a restart resumes exactly where it left off rather than snapping back to
- * a full interval.
+ * change — a reminder that just became enabled and has no live budget gets
+ * armed with a full interval; a disabled reminder with a live budget gets
+ * cleared. Neither an already-consistent reminder nor a startup restore
+ * (where nothing is `justEnabled`) produces an action, so an in-progress
+ * countdown survives a settings change that didn't touch it, a restart
+ * resumes exactly where it left off, and a cold launch stays idle until the
+ * user presses Start.
  */
 export function reconcileReminders(inputs: readonly ReconcileInput[]): ReconcileAction[] {
   const actions: ReconcileAction[] = [];
   for (const input of inputs) {
-    if (input.enabled && input.currentRemainingMs === null) {
+    if (input.justEnabled && input.currentRemainingMs === null) {
       actions.push({ kind: input.kind, ms: input.intervalMs });
     } else if (!input.enabled && input.currentRemainingMs !== null) {
       actions.push({ kind: input.kind, ms: null });

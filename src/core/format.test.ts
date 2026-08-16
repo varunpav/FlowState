@@ -1,5 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { formatCountdown, relativeDayLabel } from "./format";
+import { formatClockTime, formatCountdown, relativeDayLabel } from "./format";
+
+describe("formatClockTime", () => {
+  it("formats an afternoon time with AM/PM", () => {
+    const ms = Date.UTC(2026, 0, 15, 19, 42);
+    expect(formatClockTime(ms, "UTC")).toBe("7:42 PM");
+  });
+
+  it("formats midnight as 12 AM, not 0", () => {
+    const ms = Date.UTC(2026, 0, 15, 0, 5);
+    expect(formatClockTime(ms, "UTC")).toBe("12:05 AM");
+  });
+
+  it("formats noon as 12 PM", () => {
+    const ms = Date.UTC(2026, 0, 15, 12, 0);
+    expect(formatClockTime(ms, "UTC")).toBe("12:00 PM");
+  });
+});
 
 describe("formatCountdown", () => {
   it("formats hours:minutes:seconds when over an hour remains", () => {
