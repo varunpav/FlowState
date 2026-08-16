@@ -307,6 +307,10 @@ h1 {
   min-width: 0;
 }
 
+.water-entry-row .water-entry-custom-input {
+  flex: 1;
+}
+
 .water-day-stepper {
   display: flex;
   align-items: center;

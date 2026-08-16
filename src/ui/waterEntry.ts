@@ -30,7 +30,7 @@ export function mountWaterEntry(
   const customInput = document.createElement("input");
   customInput.type = "number";
   customInput.min = "1";
-  customInput.placeholder = "Custom oz";
+  customInput.placeholder = "Custom (oz)";
   customInput.className = "water-entry-custom-input";
 
   const customBtn = document.createElement("button");
