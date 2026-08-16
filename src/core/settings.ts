@@ -25,6 +25,11 @@ export interface IdlePauseSettings {
   thresholdSeconds: number;
 }
 
+export interface CvSettings {
+  /** Off by default — see cv/README.md for setup. Gates the hydration takeover's camera pane. */
+  enabled: boolean;
+}
+
 export interface RemindersSettings {
   hydration: ReminderSettings;
   eyeBreak: ReminderSettings;
@@ -37,6 +42,7 @@ export interface Settings {
   pomodoro: PomodoroSettings;
   water: WaterSettings;
   idlePause: IdlePauseSettings;
+  cv: CvSettings;
   snoozeMs: number;
   maxSnoozes: number;
   volume: number;
@@ -54,6 +60,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pomodoro: { enabled: false, focusMs: 25 * 60 * 1000, breakMs: 5 * 60 * 1000, alertStyle: "takeover" },
   water: { bottleOz: 24, dailyGoalOz: 128 },
   idlePause: { enabled: true, thresholdSeconds: INACTIVITY_THRESHOLD_SECONDS },
+  cv: { enabled: false },
   snoozeMs: 15 * 60 * 1000,
   maxSnoozes: 3,
   volume: 0.7,
@@ -224,6 +231,16 @@ function parseIdlePause(obj: Record<string, unknown>, issues: string[]): IdlePau
   return { enabled, thresholdSeconds };
 }
 
+function parseCv(obj: Record<string, unknown>, issues: string[]): CvSettings | undefined {
+  const raw = child(obj, "", "cv", issues);
+  if (!raw) return undefined;
+  const path = "cv";
+
+  const enabled = bool(raw, path, "enabled", issues);
+  if (enabled === undefined) return undefined;
+  return { enabled };
+}
+
 /**
  * Validated at the boundary where JSON returns from the Rust store, rather
  * than deep inside the scheduling engine — callers get a discriminated union
@@ -249,6 +266,7 @@ export function parseSettings(input: unknown): ParseSettingsResult {
   const pomodoro = parsePomodoro(obj, issues);
   const water = parseWater(obj, issues);
   const idlePause = parseIdlePause(obj, issues);
+  const cv = parseCv(obj, issues);
 
   const snoozeMs = num(obj, "", "snoozeMs", issues, { min: 1_000 });
   const maxSnoozes = num(obj, "", "maxSnoozes", issues, { min: 0, integer: true });
@@ -270,6 +288,7 @@ export function parseSettings(input: unknown): ParseSettingsResult {
       pomodoro: pomodoro as PomodoroSettings,
       water: water as WaterSettings,
       idlePause: idlePause as IdlePauseSettings,
+      cv: cv as CvSettings,
       snoozeMs: snoozeMs as number,
       maxSnoozes: maxSnoozes as number,
       volume: volume as number,

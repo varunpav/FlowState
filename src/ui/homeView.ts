@@ -1,13 +1,21 @@
-import type { ReminderKind } from "../core/reminders";
 import { REMINDER_LABELS } from "../core/reminders";
 import { formatClockTime, formatCountdown } from "../core/format";
+import type { TimerRowModel } from "../core/timerRow";
 import { entryOn, goalStreak, lastNDays, monthToDate, yearToDate, type DailyLog } from "../core/waterLog";
+import type { PauseReason } from "../ipc";
 import { mountWaterEntry, type WaterEntryHandle } from "./waterEntry";
 
 const RING_RADIUS = 54;
 const RING_STROKE = 10;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** Only meaningful while hydration is actually running — the idle/off hero states use their own fixed labels regardless of pauseReason. */
+function hydrationHeroLabel(pauseReason: PauseReason | null): string {
+  if (pauseReason === "system") return "System restart - Paused";
+  if (pauseReason === "manual") return "Paused";
+  return REMINDER_LABELS.hydration;
+}
 
 export interface HomeViewElements {
   heroEl: HTMLElement;
@@ -46,25 +54,20 @@ export interface HomeViewOptions {
   onTestNotification: () => void;
 }
 
-/** One row entry for a non-hydration timer shown under the hero. */
-export interface TimerRowEntry {
-  kind: ReminderKind;
-  remainingMs: number | null;
-}
-
 export interface HomeView {
   /**
-   * Hero is always Hydration; `secondary` is pre-filtered to enabled kinds,
-   * in fixed order. `nowMs` renders the idle-hero placeholder clock — it's
-   * ignored once hydration is armed.
+   * Hero is always Hydration; `model.secondary` is pre-filtered to enabled
+   * kinds, in fixed order. `nowMs` renders the idle/off-hero placeholder
+   * clock — it's ignored once hydration is armed.
    */
-  renderTimers(hydrationMs: number | null, secondary: TimerRowEntry[], nowMs: number): void;
+  renderTimers(model: TimerRowModel, nowMs: number): void;
   renderWater(log: DailyLog, todayKey: string, goalOz: number): void;
   setBottleOz(oz: number): void;
   setIntervalMinutes(minutes: number): void;
   /** What the slider currently reads, in minutes — lets callers avoid clobbering an in-progress edit. */
   getIntervalMinutes(): number;
-  setPaused(paused: boolean): void;
+  /** `null` = running. `"system"` gets its own hero wording (see renderTimers) — a sleep/restart pause reads differently from one the user asked for. */
+  setPause(reason: PauseReason | null): void;
 }
 
 function buildRing(container: HTMLElement): { setProgress(fraction: number): void; setLabel(text: string): void } {
@@ -167,7 +170,7 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
   const waterEntry: WaterEntryHandle = mountWaterEntry(el.waterEntryContainerEl, options.bottleOz, (oz) =>
     options.onWaterLogged(oz, Date.now()),
   );
-  let paused = false;
+  let pauseReason: PauseReason | null = null;
 
   el.intervalSliderEl.addEventListener("change", () => {
     const minutes = Number(el.intervalSliderEl.value);
@@ -185,27 +188,46 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
   el.testNotificationBtn.addEventListener("click", () => options.onTestNotification());
 
   return {
-    renderTimers(hydrationMs: number | null, secondary: TimerRowEntry[], nowMs: number) {
-      // Unarmed: a neutral clock placeholder rather than a countdown to
-      // nothing — the hero shouldn't imply a timer is running until the
-      // user explicitly starts one. Paused keeps the countdown on screen
-      // (only the label changes) — blanking it reads as a hang, not a pause.
-      if (hydrationMs === null) {
+    renderTimers(model: TimerRowModel, nowMs: number) {
+      const { hero, secondary } = model;
+
+      // "off" (hydration disabled) and "idle" (enabled, not yet armed) both
+      // show a neutral clock placeholder rather than a countdown to nothing
+      // — the hero shouldn't imply a timer is running until the user
+      // explicitly starts one. Paused keeps the countdown on screen while
+      // running (only the label changes) — blanking it reads as a hang.
+      el.heroEl.classList.toggle("hero-off", hero.state === "off");
+      if (hero.state === "off") {
+        el.heroLabelEl.textContent = "Hydration off";
+        el.heroCountdownEl.textContent = formatClockTime(nowMs);
+      } else if (hero.state === "idle") {
         el.heroLabelEl.textContent = "Not started";
         el.heroCountdownEl.textContent = formatClockTime(nowMs);
       } else {
-        el.heroLabelEl.textContent = paused ? "Paused" : REMINDER_LABELS.hydration;
-        el.heroCountdownEl.textContent = formatCountdown(hydrationMs);
+        el.heroLabelEl.textContent = hydrationHeroLabel(pauseReason);
+        el.heroCountdownEl.textContent = formatCountdown(hero.remainingMs as number);
       }
-      // hydrationMs !== null IS "armed" — the label can never disagree with
-      // the actual timer state, unlike a separately-tracked boolean would.
-      el.startTimerBtn.textContent = hydrationMs === null ? "Start timer" : "Reset timer";
+
+      // Start/Reset reflects whether ANYTHING is armed, not just hydration —
+      // otherwise switching hydration off would leave the button reading
+      // "Start timer" forever while Pomodoro/eye break keep counting below.
+      const anyArmed = hero.state === "running" || secondary.some((entry) => entry.running);
+      // secondary is already filtered to enabled kinds, so "off" + no
+      // secondary entries means literally nothing is enabled — a Start
+      // button that provably can't do anything shouldn't invite a click.
+      const anyEnabled = hero.state !== "off" || secondary.length > 0;
+      el.startTimerBtn.textContent = anyArmed ? "Reset timer" : "Start timer";
+      el.startTimerBtn.disabled = !anyEnabled;
+      el.startTimerBtn.title = anyEnabled ? "" : "Enable a reminder in Settings first";
+      // Nothing to pause/resume when nothing's armed — a fully interactive
+      // Pause button sitting over an idle hero is dead weight.
+      el.pauseBtn.hidden = !anyArmed;
 
       el.chipsEl.replaceChildren(
         ...secondary.map((entry) => {
           const chipEl = document.createElement("span");
-          chipEl.className = "reminder-chip";
-          chipEl.textContent = `${REMINDER_LABELS[entry.kind]} ${entry.remainingMs === null ? "—" : formatCountdown(entry.remainingMs)}`;
+          chipEl.className = entry.running ? "reminder-chip" : "reminder-chip reminder-chip-idle";
+          chipEl.textContent = `${entry.label} ${formatCountdown(entry.displayMs)}`;
           return chipEl;
         }),
       );
@@ -247,11 +269,12 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
       return Number(el.intervalSliderEl.value);
     },
 
-    setPaused(next: boolean) {
-      paused = next;
-      el.pauseBtn.textContent = next ? "Resume" : "Pause";
-      el.pauseBtn.classList.toggle("pause-btn-active", next);
-      el.heroEl.classList.toggle("hero-paused", next);
+    setPause(reason: PauseReason | null) {
+      pauseReason = reason;
+      const isPaused = reason !== null;
+      el.pauseBtn.textContent = isPaused ? "Resume" : "Pause";
+      el.pauseBtn.classList.toggle("pause-btn-active", isPaused);
+      el.heroEl.classList.toggle("hero-paused", isPaused);
     },
   };
 }

@@ -4,30 +4,26 @@ import { createChime } from "./audio/chime";
 import { formatCountdown } from "./core/format";
 import { isIdle } from "./core/idlePolicy";
 import { advancePomodoro, type PomodoroState } from "./core/pomodoro";
-import {
-  nextDue,
-  reconcileReminders,
-  REMINDER_KINDS,
-  REMINDER_LABELS,
-  type ArmedReminder,
-  type ReminderKind,
-} from "./core/reminders";
+import { nextDue, reconcileReminders, REMINDER_KINDS, REMINDER_LABELS, type ArmedReminder } from "./core/reminders";
 import type { Settings } from "./core/settings";
+import { timerRowModel } from "./core/timerRow";
 import { dayKeyOf, entryOn, logWater, removeWater } from "./core/waterLog";
 import {
   getState,
   onReminderDue,
   onTick,
-  setGlobalPause,
+  setPause,
   setPauseThresholdSeconds,
   setReminderConfigs,
   setRemainingMs,
+  type PauseReason,
   type ReminderConfig,
   type ReminderSnapshot,
 } from "./ipc";
 import { loadLog, localTzOffsetMinutes, saveLog } from "./logStore";
 import { loadPomodoroState, loadSettings, savePomodoroState, saveSettings } from "./settingsStore";
-import { initHomeView, type TimerRowEntry } from "./ui/homeView";
+import { initErrorBanner, reportError } from "./ui/errorBanner";
+import { initHomeView } from "./ui/homeView";
 import { initSettingsPanel } from "./ui/settingsPanel";
 import { initTakeover } from "./ui/takeover";
 
@@ -51,97 +47,48 @@ function buildReminderConfigs(settings: Settings, pomodoroState: PomodoroState):
   ];
 }
 
-/** Enable-flag snapshot used to detect a genuine disabled->enabled transition — see `justEnabled` on ReconcileInput. */
-type EnabledSnapshot = Record<ReminderKind, boolean>;
-
-function enabledSnapshotFrom(settings: Settings): EnabledSnapshot {
-  return {
-    hydration: settings.reminders.hydration.enabled,
-    eyeBreak: settings.reminders.eyeBreak.enabled,
-    standUp: settings.reminders.standUp.enabled,
-    pomodoro: settings.pomodoro.enabled,
-  };
-}
-
-function reconcileInputsFor(
-  settings: Settings,
-  pomodoroState: PomodoroState,
-  snapshot: ReminderSnapshot[],
-  prevEnabled: EnabledSnapshot,
-) {
-  const remainingOf = (kind: ReminderKind) => snapshot.find((r) => r.kind === kind)?.remainingMs ?? null;
-  return [
+/**
+ * Reconcile's only job now is clearing a budget the user just disabled —
+ * arming is always an explicit act (the Start button), never a side effect
+ * of a settings change. See core/reminders.ts's reconcileReminders docstring.
+ */
+async function applyReconcile(settings: Settings, snapshot: ReminderSnapshot[]) {
+  const actions = reconcileReminders([
     {
-      kind: "hydration" as const,
+      kind: "hydration",
       enabled: settings.reminders.hydration.enabled,
-      justEnabled: settings.reminders.hydration.enabled && !prevEnabled.hydration,
-      intervalMs: settings.reminders.hydration.intervalMs,
-      currentRemainingMs: remainingOf("hydration"),
+      currentRemainingMs: remainingOf(snapshot, "hydration"),
     },
     {
-      kind: "eyeBreak" as const,
+      kind: "eyeBreak",
       enabled: settings.reminders.eyeBreak.enabled,
-      justEnabled: settings.reminders.eyeBreak.enabled && !prevEnabled.eyeBreak,
-      intervalMs: settings.reminders.eyeBreak.intervalMs,
-      currentRemainingMs: remainingOf("eyeBreak"),
+      currentRemainingMs: remainingOf(snapshot, "eyeBreak"),
     },
     {
-      kind: "standUp" as const,
+      kind: "standUp",
       enabled: settings.reminders.standUp.enabled,
-      justEnabled: settings.reminders.standUp.enabled && !prevEnabled.standUp,
-      intervalMs: settings.reminders.standUp.intervalMs,
-      currentRemainingMs: remainingOf("standUp"),
+      currentRemainingMs: remainingOf(snapshot, "standUp"),
     },
     {
-      kind: "pomodoro" as const,
+      kind: "pomodoro",
       enabled: settings.pomodoro.enabled,
-      justEnabled: settings.pomodoro.enabled && !prevEnabled.pomodoro,
-      intervalMs: pomodoroState.phase === "break" ? settings.pomodoro.breakMs : settings.pomodoro.focusMs,
-      currentRemainingMs: remainingOf("pomodoro"),
+      currentRemainingMs: remainingOf(snapshot, "pomodoro"),
     },
-  ];
-}
-
-async function applyReconcile(
-  settings: Settings,
-  pomodoroState: PomodoroState,
-  snapshot: ReminderSnapshot[],
-  prevEnabled: EnabledSnapshot,
-) {
-  const actions = reconcileReminders(reconcileInputsFor(settings, pomodoroState, snapshot, prevEnabled));
+  ]);
   for (const action of actions) {
-    await setRemainingMs(action.kind, action.ms);
+    await setRemainingMs(action.kind, action.ms).catch((e) => reportError("Updating reminder", e));
   }
   return actions.length > 0;
+}
+
+function remainingOf(snapshot: readonly ReminderSnapshot[], kind: ReminderSnapshot["kind"]): number | null {
+  return snapshot.find((r) => r.kind === kind)?.remainingMs ?? null;
 }
 
 function armedFrom(snapshot: ReminderSnapshot[]): ArmedReminder[] {
   return snapshot
     .filter((r) => r.remainingMs !== null)
     .map((r) => ({ kind: r.kind, remainingMs: r.remainingMs as number }));
-}
-
-function isKindEnabled(settings: Settings, kind: Exclude<ReminderKind, "hydration">): boolean {
-  return kind === "pomodoro" ? settings.pomodoro.enabled : settings.reminders[kind].enabled;
-}
-
-/**
- * Hydration is always the hero; the rest render as a small fixed-order row
- * underneath, filtered to enabled kinds only (an enabled-but-not-yet-armed
- * kind still shows — as an em dash — so the row doesn't reflow every time a
- * reminder fires and re-arms).
- */
-function timerRowFrom(
-  settings: Settings,
-  snapshot: ReminderSnapshot[],
-): { hydrationMs: number | null; secondary: TimerRowEntry[] } {
-  const remainingOf = (kind: ReminderKind) => snapshot.find((r) => r.kind === kind)?.remainingMs ?? null;
-  const secondary: TimerRowEntry[] = REMINDER_KINDS.filter(
-    (k): k is Exclude<ReminderKind, "hydration"> => k !== "hydration",
-  )
-    .filter((k) => isKindEnabled(settings, k))
-    .map((kind) => ({ kind, remainingMs: remainingOf(kind) }));
-  return { hydrationMs: remainingOf("hydration"), secondary };
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
@@ -166,13 +113,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   let lastArmed: ArmedReminder[] = [];
   let lastSnapshot: ReminderSnapshot[] = [];
   let lastNowMs = Date.now();
-  let isPaused = false;
-  // Tracks each kind's enable flag as of the last reconcile, so `justEnabled`
-  // only fires on a genuine disabled->enabled transition — never at startup
-  // (initialized from the settings just loaded, so the very first reconcile
-  // sees no transitions) and never merely because an unrelated setting was
-  // committed. See core/reminders.ts's ReconcileInput docstring.
-  let prevEnabled = enabledSnapshotFrom(settings);
+  let pauseReason: PauseReason | null = null;
+
+  const errorBannerEl = document.querySelector<HTMLElement>("#error-banner");
+  if (errorBannerEl) initErrorBanner(errorBannerEl);
 
   const chime = createChime(settings.volume);
   // reminder-due arrives via an IPC event, not a user gesture, so the shared
@@ -181,14 +125,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   document.addEventListener("pointerdown", () => chime.unlock(), { once: true });
 
   function renderTimerRow() {
-    const timers = timerRowFrom(settings, lastSnapshot);
-    homeView.renderTimers(timers.hydrationMs, timers.secondary, lastNowMs);
+    homeView.renderTimers(timerRowModel(settings, pomodoroState, lastSnapshot), lastNowMs);
   }
 
   function handleWaterLogged(oz: number, nowMs: number) {
     const key = dayKeyOf(nowMs, localTzOffsetMinutes());
     dailyLog = logWater(dailyLog, key, oz);
-    void saveLog(dailyLog);
+    void saveLog(dailyLog).catch((e) => reportError("Saving water log", e));
     if (key === todayKey) {
       homeView.renderWater(dailyLog, todayKey, settings.water.dailyGoalOz);
     }
@@ -201,13 +144,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   // range needs to show up immediately.
   function handleWaterAdded(dayKey: string, oz: number) {
     dailyLog = logWater(dailyLog, dayKey, oz);
-    void saveLog(dailyLog);
+    void saveLog(dailyLog).catch((e) => reportError("Saving water log", e));
     homeView.renderWater(dailyLog, todayKey, settings.water.dailyGoalOz);
   }
 
   function handleWaterHistoryRemoved(dayKey: string, oz: number) {
     dailyLog = removeWater(dailyLog, dayKey, oz);
-    void saveLog(dailyLog);
+    void saveLog(dailyLog).catch((e) => reportError("Saving water log", e));
     homeView.renderWater(dailyLog, todayKey, settings.water.dailyGoalOz);
   }
 
@@ -215,9 +158,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     {
       overlayEl: document.querySelector("#takeover-overlay")!,
       titleEl: document.querySelector("#takeover-title")!,
+      cvPaneEl: document.querySelector("#takeover-cv-pane")!,
+      cvFrameEl: document.querySelector("#takeover-cv-frame")!,
+      cvPromptEl: document.querySelector("#takeover-cv-prompt")!,
       waterEntryContainerEl: document.querySelector("#takeover-water-entry")!,
       confirmRowEl: document.querySelector("#takeover-confirm-row")!,
       confirmBtn: document.querySelector("#takeover-confirm")!,
+      skipRowEl: document.querySelector("#takeover-skip-row")!,
+      skipBtn: document.querySelector("#takeover-skip")!,
       snoozeBtn: document.querySelector("#takeover-snooze")!,
       snoozeHintEl: document.querySelector("#takeover-snooze-hint")!,
     },
@@ -254,25 +202,25 @@ window.addEventListener("DOMContentLoaded", async () => {
       onIntervalChanged: (minutes) => {
         void (async () => {
           // Only ever updates the stored value for whenever the user next
-          // presses Start/Reset — v2.4 dropped the old "arm it immediately
-          // if nothing's running" behavior. Arming is always an explicit
-          // act now; the slider must never start anything on its own.
+          // presses Start/Reset — arming is always an explicit act; the
+          // slider must never start anything on its own.
           settings.reminders.hydration.intervalMs = minutes * 60_000;
           await saveSettings(settings);
           // The Settings hydration card has its own copy of this value —
           // keep it in sync so a later Settings commit can't write the
           // stale figure back and clobber what the user just set here.
           settingsPanel.refresh();
-        })();
+        })().catch((e) => reportError("Updating hydration interval", e));
       },
       onStartTimer: (minutes) => {
         void (async () => {
-          // Single two-state toggle: hydration's armed state decides
-          // whether this click means Start or Reset. Read authoritatively
-          // from getState() rather than the cached lastSnapshot, which can
-          // be up to one tick (≤1s) stale.
+          // Single two-state toggle. "Armed" means ANYTHING is running, not
+          // just hydration — otherwise switching hydration off would strand
+          // the button on "Start timer" forever while Pomodoro/eye break
+          // keep counting. Read authoritatively from getState() rather than
+          // the cached lastSnapshot, which can be up to one tick (≤1s) stale.
           const current = await getState();
-          const hydrationArmed = current.reminders.find((r) => r.kind === "hydration")?.remainingMs !== null;
+          const anyArmed = current.reminders.some((r) => r.remainingMs !== null);
 
           // Reset the Pomodoro phase on both paths — Reset must never leave
           // it mid-break, and Start must always pick up a changed focus
@@ -281,15 +229,35 @@ window.addEventListener("DOMContentLoaded", async () => {
           await savePomodoroState(pomodoroState);
           await setReminderConfigs(buildReminderConfigs(settings, pomodoroState));
 
-          if (hydrationArmed) {
+          // Clear any pause on both paths — otherwise a reminder armed by
+          // Start would come up frozen if a stale "system" pause (from a
+          // restart) or a manual tray-pause was still in effect, silently
+          // contradicting the whole point of pressing Start. Reset clears
+          // it too, since it's meant to return to a genuinely clean slate.
+          if (pauseReason !== null) {
+            pauseReason = null;
+            homeView.setPause(null);
+            void setPause(null).catch((e) => reportError("Clearing pause", e));
+          }
+
+          if (anyArmed) {
+            // Reset: clear every kind unconditionally, including one that
+            // was disabled while still armed — Start only arms ENABLED
+            // kinds below, so a disabled-but-armed kind would otherwise
+            // never get cleared by this path.
             for (const kind of REMINDER_KINDS) {
               await setRemainingMs(kind, null);
             }
           } else {
+            // Start: arm only what's enabled, each at its own configured
+            // length. Hydration is not special-cased — with it switched
+            // off, Start must not hijack the hero by arming it anyway.
             settings.reminders.hydration.intervalMs = minutes * 60_000;
             await saveSettings(settings);
             settingsPanel.refresh();
-            await setRemainingMs("hydration", settings.reminders.hydration.intervalMs);
+            if (settings.reminders.hydration.enabled) {
+              await setRemainingMs("hydration", settings.reminders.hydration.intervalMs);
+            }
             if (settings.reminders.eyeBreak.enabled) {
               await setRemainingMs("eyeBreak", settings.reminders.eyeBreak.intervalMs);
             }
@@ -303,22 +271,25 @@ window.addEventListener("DOMContentLoaded", async () => {
 
           lastSnapshot = (await getState()).reminders;
           renderTimerRow();
-        })();
+        })().catch((e) => reportError("Starting/resetting timers", e));
       },
       onPauseToggle: () => {
-        const next = !isPaused;
-        isPaused = next;
-        homeView.setPaused(next);
+        // Always toggles to/from "manual" — clicking Pause is always the
+        // user asking for it, even if a "system" pause (sleep/restart) is
+        // what's currently in effect.
+        const next: PauseReason | null = pauseReason === null ? "manual" : null;
+        pauseReason = next;
+        homeView.setPause(next);
         // Re-render immediately so the hero label swaps to "Paused" without
         // waiting up to a second for the next tick — the pause button's own
-        // label already updates instantly via setPaused above.
+        // label already updates instantly via setPause above.
         renderTimerRow();
-        void setGlobalPause(next);
+        void setPause(next).catch((e) => reportError("Toggling pause", e));
       },
       onTestAlert: () => {
         // Always hydration — an unpredictable "whatever's next-due" target
         // made this button confusing to use for its actual purpose.
-        void setRemainingMs("hydration", 10_000);
+        void setRemainingMs("hydration", 10_000).catch((e) => reportError("Starting test alert", e));
       },
       onTestNotification: () => {
         void (async () => {
@@ -329,7 +300,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           if (granted) {
             sendNotification({ title: "Flow State", body: "Test notification" });
           }
-        })();
+        })().catch((e) => reportError("Sending test notification", e));
       },
     },
   );
@@ -353,6 +324,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       idlePauseSwitchContainerEl: document.querySelector("#settings-idle-pause-switch")!,
       idlePauseThresholdRowEl: document.querySelector("#settings-idle-pause-threshold-row")!,
       idlePauseThresholdInput: document.querySelector("#settings-idle-pause-threshold")!,
+      cvSwitchContainerEl: document.querySelector("#settings-cv-switch")!,
+      cvCheckBtn: document.querySelector("#settings-cv-check")!,
+      cvCheckResultEl: document.querySelector("#settings-cv-check-result")!,
       startWithWindowsContainerEl: document.querySelector("#settings-start-with-windows-switch")!,
     },
     settings,
@@ -374,11 +348,10 @@ window.addEventListener("DOMContentLoaded", async () => {
         await setPauseThresholdSeconds(updated.idlePause.thresholdSeconds);
         await setReminderConfigs(buildReminderConfigs(updated, pomodoroState));
         const snapshot = (await getState()).reminders;
-        const reconciledNow = await applyReconcile(updated, pomodoroState, snapshot, prevEnabled);
-        prevEnabled = enabledSnapshotFrom(updated);
+        const reconciledNow = await applyReconcile(updated, snapshot);
         lastSnapshot = reconciledNow ? (await getState()).reminders : snapshot;
         renderTimerRow();
-      })();
+      })().catch((e) => reportError("Applying settings", e));
     },
     {
       getTodayKey: () => todayKey,
@@ -394,22 +367,26 @@ window.addEventListener("DOMContentLoaded", async () => {
     showTab("settings");
   });
 
-  await setPauseThresholdSeconds(settings.idlePause.thresholdSeconds);
-  await setReminderConfigs(buildReminderConfigs(settings, pomodoroState));
+  await setPauseThresholdSeconds(settings.idlePause.thresholdSeconds).catch((e) => reportError("Starting up", e));
+  await setReminderConfigs(buildReminderConfigs(settings, pomodoroState)).catch((e) => reportError("Starting up", e));
 
   const initial = await getState();
-  // prevEnabled was seeded from these same settings above, so this startup
-  // reconcile sees no disabled->enabled transitions and arms nothing — a
-  // restored non-null budget from a previous run still resumes untouched,
-  // but a fresh/never-armed reminder stays idle until the user presses
+  // Startup never auto-arms anything — reconcile only ever disarms a
+  // reminder the user disabled, and there's nothing to disarm on a cold
+  // boot. A restored non-null budget from a previous run still resumes
+  // untouched; a never-armed reminder stays idle until the user presses
   // Start.
-  const reconciled = await applyReconcile(settings, pomodoroState, initial.reminders, prevEnabled);
+  const reconciled = await applyReconcile(settings, initial.reminders);
   const afterReconcile = reconciled ? await getState() : initial;
 
   homeView.setIntervalMinutes(settings.reminders.hydration.intervalMs / 60_000);
   homeView.renderWater(dailyLog, todayKey, settings.water.dailyGoalOz);
-  isPaused = afterReconcile.globalPause;
-  homeView.setPaused(isPaused);
+  // Rust derives this fresh on every launch (a restored non-null budget
+  // implies a "system" pause — see lib.rs's .setup()) rather than restoring
+  // a persisted flag, so a countdown never silently resumes across a
+  // restart.
+  pauseReason = afterReconcile.pause;
+  homeView.setPause(pauseReason);
   lastArmed = armedFrom(afterReconcile.reminders);
   lastSnapshot = afterReconcile.reminders;
   renderTimerRow();
@@ -428,9 +405,12 @@ window.addEventListener("DOMContentLoaded", async () => {
     const idle = settings.idlePause.enabled && isIdle(payload.idleSeconds, settings.idlePause.thresholdSeconds);
     if (inactiveOverlayEl) inactiveOverlayEl.hidden = !idle;
 
-    if (payload.globalPause !== isPaused) {
-      isPaused = payload.globalPause;
-      homeView.setPaused(isPaused);
+    if (payload.pause !== pauseReason) {
+      // Covers a sleep-gap or restart pause the tick loop decided on its
+      // own — the button/hero must reflect it even though nothing on this
+      // side of the IPC boundary requested it.
+      pauseReason = payload.pause;
+      homeView.setPause(pauseReason);
     }
 
     lastArmed = armedFrom(payload.reminders);
@@ -479,6 +459,6 @@ window.addEventListener("DOMContentLoaded", async () => {
         takeover.show(kind);
       }
       // Notify-style: Rust already showed the OS toast: nothing else to do.
-    })();
+    })().catch((e) => reportError("Handling reminder", e));
   });
 });

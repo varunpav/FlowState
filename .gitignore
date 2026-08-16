@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# CV model files — not vendored, see cv/README.md's setup section
+cv/models/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

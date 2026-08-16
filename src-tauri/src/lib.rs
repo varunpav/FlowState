@@ -1,7 +1,11 @@
+mod cv;
 mod idle;
 mod scheduler;
 
-use scheduler::{ReminderConfigInput, ReminderKind, ReminderRemainingEntry, ReminderSnapshot, SchedulerState};
+use cv::CvState;
+use scheduler::{
+    PauseReason, ReminderConfigInput, ReminderKind, ReminderRemainingEntry, ReminderSnapshot, SchedulerState,
+};
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -11,10 +15,15 @@ use tauri_plugin_store::StoreExt;
 const SETTINGS_STORE: &str = "settings.json";
 const REMAINING_MS_BY_KIND_KEY: &str = "remainingMsByKind";
 const REMINDER_CONFIGS_KEY: &str = "reminderConfigs";
-const GLOBAL_PAUSE_KEY: &str = "globalPause";
 /// v1's single-reminder key — deleted on startup so it can't linger and be
 /// mistaken for live state by anything still reading it.
 const LEGACY_REMAINING_MS_KEY: &str = "remainingMs";
+/// v2.5's persisted pause flag — deleted on startup for the same reason.
+/// Pause is no longer persisted at all (see the restart-derivation comment
+/// in `.setup()` below): it's derived fresh from whether any budget
+/// restored non-null, so a stored value here would just be dead weight
+/// startup never reads.
+const LEGACY_GLOBAL_PAUSE_KEY: &str = "globalPause";
 const TRAY_ID: &str = "main-tray";
 const SNOOZE_MS_DEFAULT: i64 = 15 * 60 * 1000;
 
@@ -25,7 +34,7 @@ struct AppStateSnapshot {
     active_kind: Option<ReminderKind>,
     idle_seconds: u64,
     now_ms: i64,
-    global_pause: bool,
+    pause: Option<PauseReason>,
 }
 
 #[tauri::command]
@@ -64,7 +73,7 @@ fn get_state(state: State<SchedulerState>) -> AppStateSnapshot {
         active_kind: guard.active,
         idle_seconds: idle::idle_seconds(),
         now_ms: scheduler::now_ms(),
-        global_pause: guard.global_pause,
+        pause: guard.pause,
     }
 }
 
@@ -73,10 +82,13 @@ fn set_pause_threshold_seconds(state: State<SchedulerState>, seconds: u64) {
     state.inner.lock().unwrap().pause_threshold_seconds = seconds;
 }
 
+/// Not persisted — see `LEGACY_GLOBAL_PAUSE_KEY`'s docstring. A manual pause
+/// that survives a quit reports as `System` on the next launch, derived
+/// fresh from whatever budgets restored non-null; the only thing that
+/// distinction ever changes is the hero's label.
 #[tauri::command]
-fn set_global_pause<R: Runtime>(app: AppHandle<R>, state: State<SchedulerState>, paused: bool) {
-    scheduler::set_global_pause(&state, paused);
-    persist_global_pause(&app, paused);
+fn set_pause(state: State<SchedulerState>, reason: Option<PauseReason>) {
+    scheduler::set_pause(&state, reason);
 }
 
 #[tauri::command]
@@ -107,14 +119,6 @@ fn persist_reminder_configs<R: Runtime>(app: &AppHandle<R>, configs: &[ReminderC
     }
 }
 
-/// Pausing then quitting must not silently resume on next launch.
-fn persist_global_pause<R: Runtime>(app: &AppHandle<R>, paused: bool) {
-    if let Ok(store) = app.store(SETTINGS_STORE) {
-        store.set(GLOBAL_PAUSE_KEY, serde_json::json!(paused));
-        let _ = store.save();
-    }
-}
-
 fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -133,13 +137,17 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .manage(SchedulerState::default())
+        .manage(CvState::default())
         .invoke_handler(tauri::generate_handler![
             set_remaining_ms,
             set_reminder_configs,
             get_state,
             set_pause_threshold_seconds,
-            set_global_pause,
-            release_takeover
+            set_pause,
+            release_takeover,
+            cv::cv_start,
+            cv::cv_stop,
+            cv::cv_selftest
         ])
         .setup(|app| {
             #[cfg(desktop)]
@@ -151,6 +159,7 @@ pub fn run() {
             let state = app.state::<SchedulerState>();
             if let Ok(store) = app.store(SETTINGS_STORE) {
                 store.delete(LEGACY_REMAINING_MS_KEY);
+                store.delete(LEGACY_GLOBAL_PAUSE_KEY);
 
                 // Restore each kind's saved alertStyle/pauseWhenIdle BEFORE
                 // any remaining_ms restoration below — otherwise a restored
@@ -163,16 +172,28 @@ pub fn run() {
                     }
                 }
 
+                let mut restored_any_budget = false;
                 if let Some(entries_value) = store.get(REMAINING_MS_BY_KIND_KEY) {
                     if let Ok(entries) = serde_json::from_value::<Vec<ReminderRemainingEntry>>(entries_value) {
                         for entry in entries {
+                            if entry.remaining_ms.is_some() {
+                                restored_any_budget = true;
+                            }
                             scheduler::set_remaining(&state, entry.kind, entry.remaining_ms);
                         }
                     }
                 }
 
-                if let Some(paused) = store.get(GLOBAL_PAUSE_KEY).and_then(|v| v.as_bool()) {
-                    scheduler::set_global_pause(&state, paused);
+                // A restart resumes budgets at their exact frozen value (a
+                // closed app never ticks, so no elapsed-time gap math is
+                // needed — see persist_remaining's docstring) but must NOT
+                // resume counting immediately: arming is always an explicit
+                // act (core/reminders.ts's reconcileReminders docstring),
+                // and a countdown that silently kept going across a restart
+                // would violate that. Pausing here is the restart
+                // equivalent of the sleep-gap pause in advance_tick.
+                if restored_any_budget {
+                    scheduler::set_pause(&state, Some(PauseReason::System));
                 }
             }
 
@@ -216,9 +237,9 @@ pub fn run() {
                     }
                     "pause" => {
                         let state = app.state::<SchedulerState>();
-                        let currently_paused = state.inner.lock().unwrap().global_pause;
-                        scheduler::set_global_pause(&state, !currently_paused);
-                        persist_global_pause(app, !currently_paused);
+                        let currently_paused = state.inner.lock().unwrap().pause.is_some();
+                        let next = if currently_paused { None } else { Some(PauseReason::Manual) };
+                        scheduler::set_pause(&state, next);
                     }
                     "quit" => app.exit(0),
                     _ => {}
@@ -252,6 +273,11 @@ pub fn run() {
             if let RunEvent::Exit = event {
                 let state = app_handle.state::<SchedulerState>();
                 persist_remaining(app_handle, &state);
+                // Backstop for the CV child process — every takeover close
+                // path (confirm/snooze/skip in the frontend) already calls
+                // cv_stop, but this covers a quit while a takeover happens
+                // to be up, so the webcam light can never outlive the app.
+                cv::cv_stop(app_handle.state::<CvState>());
             }
         });
 }

@@ -14,7 +14,7 @@ Since the core of the app is already an interval timer with screen-lock behavior
 
 ## Roadmap
 
-**v2.0 — CV-based drink verification (in progress):** Instead of dismissing the alert with a click, the app will use computer vision to confirm you actually drank water before letting you get back to work thus closing the loop between "reminded" and "actually hydrated."
+**v3.0 — CV-based drink verification (shipped, off by default):** Instead of dismissing the alert with a click, the hydration takeover can use OpenCV to confirm you actually raised a bottle to your face before letting you log water — closing the loop between "reminded" and "actually hydrated." See the camera section below and [`cv/README.md`](./cv/README.md) for setup; it's a separate Python process the app spawns and kills around each takeover, not something running in the background.
 
 ## Try it out!
 
@@ -26,6 +26,7 @@ Since the core of the app is already an interval timer with screen-lock behavior
   - Microsoft C++ Build Tools (the "Desktop development with C++" workload from the [VS Build Tools installer](https://visualstudio.microsoft.com/visual-cpp-build-tools/))
   - WebView2 Runtime — already installed on Windows 11 by default; on Windows 10 grab it from [Microsoft's WebView2 page](https://developer.microsoft.com/microsoft-edge/webview2/)
 - **macOS/Linux:** see [Tauri's prerequisites guide](https://v2.tauri.app/start/prerequisites/) for the platform-specific webview/toolchain deps — this app was built and tested on Windows, so those paths are unverified here.
+- **Optional — Python 3 + `opencv-python`**, only if you want camera drink verification (off by default). See [`cv/README.md`](./cv/README.md) for the two-step setup. Everything else works with no Python installed at all.
 
 ### Setup
 
@@ -45,18 +46,23 @@ First launch compiles the Rust side, which takes a minute or two; after that, `c
 
 **The window starts hidden in the system tray** (or the overflow "^" area next to it, if Windows tucks new icons away by default) — that's intentional, it's meant to live in the background. Click the tray icon, or the "Flow State" entry in the taskbar, to open it. From there:
 
-- The home page's hero is always the **hydration countdown** — drag the slider and hit **Start timer** to arm/restart it at that many minutes (the slider alone just sets the length for the *next* cycle, without disturbing a countdown already running). Any other enabled reminder (Pomodoro, eye break, stand-up) shows in a small row underneath.
-- **Pause** freezes every reminder at its exact remaining time; **Resume** picks up from there. Same toggle is reachable from the tray as "Pause / Resume all."
+- The home page's hero is always **hydration**, and arming is always something you do on purpose — nothing starts counting down by itself, whether that's a fresh launch or just enabling a reminder in Settings. Before you've pressed Start (or if hydration itself is switched off in Settings) the hero shows the current time instead of a countdown, labeled "Not started" or "Hydration off" so it's clear why nothing's running. Drag the slider to set hydration's length, then hit **Start timer** to arm every *enabled* reminder at its own configured length. Once anything is running, the same button reads **Reset timer** and clears everything back to idle (including resetting a Pomodoro in progress back to a fresh Focus block).
+- Any other enabled reminder (Pomodoro, eye break, stand-up) shows in a small row underneath the hero — dimmed while idle (a preview of its configured length, not a live countdown) and normal weight once it's actually running. Pomodoro's entry also says which phase it's in ("Pomodoro · Focus" / "Pomodoro · Break").
+- **Pause** freezes every reminder at its exact remaining time; **Resume** picks up from there. Same toggle is reachable from the tray as "Pause / Resume all." The button only appears once something's actually armed — there's nothing to pause otherwise.
+- Closing the laptop or restarting the app both leave everything **paused rather than silently resuming** — a restart resumes at the exact frozen value but waits for you to hit Resume, and a sleep of more than two minutes does the same rather than firing every reminder that "expired" while asleep. Either case shows as **System restart - Paused** in the hero so it reads differently from a pause you asked for yourself.
 - **Test alert in 10s** / **Test notification** are fast-forward buttons — the first arms a real hydration takeover, the second fires an OS toast directly without waiting for a reminder to actually fire.
 - The home page also shows a **hydration ring and 7-day bar chart** tracking progress toward the daily water goal (default a gallon/128oz), with quick-add buttons to log how much you drank — either from a takeover or anytime from the home page.
-- **Settings** tab has one card per reminder (hydration, Pomodoro, eye break, stand-up) — each with its own enable toggle, interval (or Pomodoro's 25/55 focus + 5/15 break choice), and an "attention grabber" style: full-screen takeover or a quiet system notification. Also covers water bottle size/goal (plus a day picker to add/remove/clear logged ounces for the last week), snooze length, max snoozes, alert volume, whether inactivity pauses timers at all (and after how long — handy for "I'm watching a movie, don't pause my breaks"), and start-with-Windows. Everything persists across restarts.
+- **Settings** tab has one card per reminder (hydration, Pomodoro, eye break, stand-up) — each with its own enable toggle, interval (or Pomodoro's 25/55 focus + 5/15 break choice), and an "attention grabber" style: full-screen takeover or a quiet system notification. Also covers water bottle size/goal (plus a `‹ day ›` stepper to add/remove logged ounces for any of the last 7 days), whether inactivity pauses timers at all (and after how long — handy for "I'm watching a movie, don't pause my breaks"), snooze length, max snoozes, alert volume, and start-with-Windows. There's no Save button — every field applies the instant you change it, confirmed by a brief "Saved" note under the fields; if something fails to persist (an OS-level autostart change, a corrupted store file), a banner across the top of the window says so instead of failing silently.
 - Step away from the keyboard past the configured inactivity threshold (default 30s) and every reminder's countdown pauses (shown with a grayed-out "Paused" overlay) until you're back — except a Pomodoro break in progress, which keeps running, since walking away from the desk *is* the break. Turn inactivity-pausing off entirely in Settings if you don't want that behavior at all.
+- A full-screen takeover can be dismissed from the keyboard — its primary action is focused automatically, so Enter/Space confirms and Escape snoozes.
+- **Camera drink verification** is off by default — turn it on under Settings → *Drink verification (camera)*, plus a **Check camera** button that tells you specifically what's missing (Python, `opencv-python`, the model files, or the camera itself; see [`cv/README.md`](./cv/README.md) for setup). Once enabled, the hydration takeover shows a live camera pane with detection boxes and locks the water-quick-add buttons until it sees a bottle held up to your face for about a second — **Skip** is always there if you'd rather dismiss without logging. The camera only ever runs for the seconds a takeover is on screen, nothing is recorded to disk, and a broken camera falls back to normal manual logging rather than blocking you.
 
 ### Tests
 
 ```bash
-npm test                                              # TypeScript core logic (Vitest)
+npm test                                              # TypeScript core logic + UI wiring (Vitest, happy-dom for the UI layer)
 cargo test --manifest-path src-tauri/Cargo.toml       # Rust scheduler/idle-detection logic
+python -m unittest discover cv                        # CV drink-detection geometry (stdlib only, no opencv needed)
 ```
 
 ### Production build
@@ -65,4 +71,23 @@ cargo test --manifest-path src-tauri/Cargo.toml       # Rust scheduler/idle-dete
 npm run tauri build
 ```
 
-Produces an MSI and NSIS installer under `src-tauri/target/release/bundle/` (Windows) — install and run that rather than the dev build to test OS-level behavior that differs between `tauri dev` and an installed app (system tray persistence, autostart, Windows toast notifications).
+Produces an MSI and NSIS installer under `src-tauri/target/release/bundle/` (Windows) — install and run that rather than the dev build to test OS-level behavior that differs between `tauri dev` and an installed app (system tray persistence, autostart, Windows toast notifications). See [`VERIFICATION.md`](./VERIFICATION.md) for the full checklist of what specifically needs an installed build to check.
+
+## Distribution
+
+The installer above is **unsigned**, so Windows SmartScreen shows an "unrecognized app" warning on first run. Fixing that needs a code-signing certificate, which isn't something a build step can add on its own:
+
+- **OV (Organization Validation) certificate** (~$200–300/year) — removes the "unrecognized publisher" wording but SmartScreen's reputation system still flags a low-download-count app for a while.
+- **EV (Extended Validation) certificate** (~$300–500/year) — gets instant SmartScreen reputation, since EV issuance requires more identity verification up front. The faster route if this is ever distributed beyond a handful of people.
+
+Once a certificate exists, `src-tauri/tauri.conf.json`'s `bundle.windows` object takes:
+
+```json
+"windows": {
+  "certificateThumbprint": "...",
+  "digestAlgorithm": "sha256",
+  "timestampUrl": "http://timestamp.digicert.com"
+}
+```
+
+`tauri build` then signs the MSI/NSIS output automatically — no other pipeline changes needed. Auto-updates (`tauri-plugin-updater`) are a separate, later concern and also assume a signed build.

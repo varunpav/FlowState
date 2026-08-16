@@ -9,6 +9,11 @@
   </head>
 
   <body>
+    <div id="error-banner" class="error-banner" hidden>
+      <span data-text></span>
+      <button type="button" data-dismiss class="error-banner-dismiss" aria-label="Dismiss">×</button>
+    </div>
+
     <nav class="tabs">
       <button id="tab-home" type="button" class="tab-btn tab-btn-active">Home</button>
       <button id="tab-settings" type="button" class="tab-btn">Settings</button>
@@ -118,6 +123,26 @@
       </details>
 
       <details class="settings-section">
+        <summary>Drink verification (camera)</summary>
+        <p class="settings-note">
+          When enabled, the hydration takeover watches for a bottle raised to your face before
+          letting you log water — the camera only runs while that takeover is on screen, and no
+          frame is ever saved. See <code>cv/README.md</code> for setup (it needs
+          <code>opencv-python</code> and a model file this app doesn't bundle).
+        </p>
+        <div class="settings-card-body">
+          <label class="settings-field settings-field-checkbox">
+            <span id="settings-cv-switch"></span>
+            Enable camera verification
+          </label>
+          <div class="row">
+            <button id="settings-cv-check" type="button">Check camera</button>
+          </div>
+          <p class="settings-status" id="settings-cv-check-result" hidden></p>
+        </div>
+      </details>
+
+      <details class="settings-section">
         <summary>Alerts &amp; sound</summary>
         <div class="settings-card-body">
           <label class="settings-field settings-field-checkbox">
@@ -170,9 +195,16 @@
       <div class="takeover-card">
         <img src="/src/assets/logo.svg" alt="" class="takeover-logo" />
         <h2 class="takeover-title" id="takeover-title">Time to hydrate</h2>
+        <div id="takeover-cv-pane" class="takeover-cv-pane" hidden>
+          <img id="takeover-cv-frame" class="takeover-cv-frame" alt="Camera preview with detection boxes" />
+          <p class="takeover-cv-prompt" id="takeover-cv-prompt"></p>
+        </div>
         <div id="takeover-water-entry" hidden></div>
         <div class="row" id="takeover-confirm-row">
           <button id="takeover-confirm" type="button" class="takeover-confirm">Done</button>
+        </div>
+        <div class="row" id="takeover-skip-row" hidden>
+          <button id="takeover-skip" type="button" class="ghost-btn">Skip</button>
         </div>
         <div class="row">
           <button id="takeover-snooze" type="button" class="takeover-snooze">Snooze 15 min</button>

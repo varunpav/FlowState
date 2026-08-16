@@ -1,5 +1,6 @@
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import type { ChimeHandle } from "../audio/chime";
+import { cvSelftest } from "../cv";
 import { relativeDayLabel } from "../core/format";
 import { parseSettings, type Settings } from "../core/settings";
 import { addDays } from "../core/waterLog";
@@ -28,6 +29,9 @@ export interface SettingsPanelElements {
   idlePauseSwitchContainerEl: HTMLElement;
   idlePauseThresholdRowEl: HTMLElement;
   idlePauseThresholdInput: HTMLInputElement;
+  cvSwitchContainerEl: HTMLElement;
+  cvCheckBtn: HTMLButtonElement;
+  cvCheckResultEl: HTMLElement;
   startWithWindowsContainerEl: HTMLElement;
 }
 
@@ -113,6 +117,7 @@ export function initSettingsPanel(
         enabled: idlePauseSwitch.get(),
         thresholdSeconds: Number(el.idlePauseThresholdInput.value),
       },
+      cv: { enabled: cvSwitch.get() },
       snoozeMs: Number(el.snoozeInput.value) * 60_000,
       maxSnoozes: Number(el.maxSnoozesInput.value),
       volume: Number(el.volumeInput.value),
@@ -124,8 +129,12 @@ export function initSettingsPanel(
     const candidate = buildCandidate();
     const result = parseSettings(candidate);
     if (!result.ok) {
+      // Repaint BEFORE showing the error — refresh() unconditionally hides
+      // the status line as part of resetting every field, so calling it
+      // after showStatus() would immediately hide the very error it just
+      // displayed.
+      refresh();
       showStatus(result.issues.join("; "), "error");
-      refresh(); // repaint every field from the last-good `settings`
       return;
     }
     Object.assign(settings, result.value);
@@ -167,10 +176,15 @@ export function initSettingsPanel(
       }
     } catch (err) {
       console.error("Failed to update Start with Windows:", err);
-      showStatus("Failed to update Start with Windows", "error");
       const actual = await isEnabled();
       startWithWindowsSwitch.set(actual);
-      void commit();
+      // Await the corrective commit and show the failure status AFTER it —
+      // commit() ends with its own showStatus("Saved", "ok") on success,
+      // which would otherwise silently overwrite this error the instant it
+      // appeared (the settings themselves did save; the OS-level autostart
+      // change is what failed, and that's the part worth surfacing last).
+      await commit();
+      showStatus("Failed to update Start with Windows", "error");
     }
   }
 
@@ -195,6 +209,9 @@ export function initSettingsPanel(
     void commit();
   });
   el.idlePauseSwitchContainerEl.replaceChildren(idlePauseSwitch.el);
+
+  const cvSwitch = createSwitch(false, () => void commit());
+  el.cvSwitchContainerEl.replaceChildren(cvSwitch.el);
 
   // Stepped by the last week only — `addDays` on `dayKeyOf`'s pure-UTC day
   // keys, never a local-timezone Date, so this can't drift a day off near a
@@ -229,6 +246,8 @@ export function initSettingsPanel(
     idlePauseSwitch.set(settings.idlePause.enabled);
     el.idlePauseThresholdInput.value = String(settings.idlePause.thresholdSeconds);
     syncIdlePauseDisabled();
+    cvSwitch.set(settings.cv.enabled);
+    el.cvCheckResultEl.hidden = true;
     el.statusEl.hidden = true;
     // The OS registry is the source of truth, not the persisted flag — it
     // can drift if the user removes the entry via Task Manager's Startup
@@ -286,6 +305,35 @@ export function initSettingsPanel(
   el.testSoundBtn.addEventListener("click", () => {
     chime.setVolume(Number(el.volumeInput.value));
     chime.startOnce();
+  });
+
+  // Doubles as the setup diagnostic (cv/README.md) and the "permissions
+  // check" surface — python-not-installed, opencv-missing, model-files-
+  // missing, and camera-unavailable are otherwise indistinguishable to a
+  // user as "the camera pane didn't show up."
+  el.cvCheckBtn.addEventListener("click", () => {
+    void (async () => {
+      el.cvCheckBtn.disabled = true;
+      el.cvCheckResultEl.hidden = false;
+      el.cvCheckResultEl.classList.remove("settings-status-error", "settings-status-ok");
+      el.cvCheckResultEl.textContent = "Checking…";
+      try {
+        const result = await cvSelftest();
+        const ok = result.opencv && result.model && result.camera;
+        el.cvCheckResultEl.textContent = result.message;
+        el.cvCheckResultEl.classList.toggle("settings-status-error", !ok);
+        el.cvCheckResultEl.classList.toggle("settings-status-ok", ok);
+      } catch (err) {
+        // cv_selftest itself failing to spawn (Python isn't on PATH at all)
+        // is a rejected promise, not a `{opencv:false,...}` result — the
+        // camera light can never come on without a process, but this case
+        // still needs its own message rather than looking like a hang.
+        el.cvCheckResultEl.textContent = `Couldn't run the camera check: ${err instanceof Error ? err.message : String(err)}`;
+        el.cvCheckResultEl.classList.add("settings-status-error");
+      } finally {
+        el.cvCheckBtn.disabled = false;
+      }
+    })();
   });
 
   return { refresh };

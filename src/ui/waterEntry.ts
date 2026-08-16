@@ -2,6 +2,8 @@ export interface WaterEntryHandle {
   setBottleOz(oz: number): void;
   /** Empties the composed field — called each time the hydration takeover reopens. */
   reset(): void;
+  /** Gates all four controls at once — the CV-verification takeover disables entry until a sip is confirmed (or CV fails open — see core/cvGate.ts). */
+  setEnabled(enabled: boolean): void;
 }
 
 /**
@@ -54,13 +56,15 @@ export function mountWaterEntry(
   }
   render();
 
+  let enabled = true;
+
   function currentValue(): number {
     const value = Number(customInput.value);
     return Number.isFinite(value) ? value : 0;
   }
 
   function syncAddDisabled() {
-    customBtn.disabled = currentValue() <= 0;
+    customBtn.disabled = !enabled || currentValue() <= 0;
   }
 
   function addToField(amount: number) {
@@ -94,6 +98,13 @@ export function mountWaterEntry(
     },
     reset() {
       customInput.value = "";
+      syncAddDisabled();
+    },
+    setEnabled(next: boolean) {
+      enabled = next;
+      quickBtn.disabled = !enabled;
+      halfBtn.disabled = !enabled;
+      customInput.disabled = !enabled;
       syncAddDisabled();
     },
   };

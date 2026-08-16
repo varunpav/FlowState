@@ -34,6 +34,38 @@ body {
   background-color: var(--tan-bg);
 }
 
+.error-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8em;
+  padding: 0.5em 1em;
+  background-color: #a13a3a;
+  color: #fdf2f2;
+  font-size: 0.9em;
+  text-align: center;
+}
+
+.error-banner[hidden] {
+  display: none;
+}
+
+.error-banner-dismiss {
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0 0.3em;
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+.error-banner-dismiss:hover {
+  background-color: rgba(253, 242, 242, 0.2);
+}
+
 .tabs {
   display: flex;
   justify-content: center;
@@ -133,7 +165,8 @@ h1 {
   color: var(--blue-dark);
 }
 
-.hero-paused {
+.hero-paused,
+.hero-off {
   opacity: 0.55;
 }
 
@@ -151,6 +184,13 @@ h1 {
   font-weight: 600;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+}
+
+/* An idle preview (configured length, not yet armed) reads as static rather than a stalled countdown. */
+.reminder-chip-idle {
+  color: var(--ink-soft);
+  font-weight: 500;
+  opacity: 0.7;
 }
 
 .water-card {
@@ -497,6 +537,29 @@ h1 {
   margin: 0;
 }
 
+.takeover-cv-pane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.takeover-cv-frame {
+  width: 20em;
+  max-width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  border: 1px solid var(--tan-border);
+  background: var(--tan-bg);
+  object-fit: cover;
+}
+
+.takeover-cv-prompt {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.9em;
+}
+
 .settings-view {
   margin: 0 auto;
   max-width: 30em;
@@ -726,6 +789,13 @@ button:hover {
 button:active {
   background-color: var(--blue);
   color: var(--tan-surface);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background-color: var(--tan-surface);
+  color: var(--ink-soft);
 }
 
 button:focus-visible,

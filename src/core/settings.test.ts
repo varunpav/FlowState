@@ -68,6 +68,15 @@ describe("parseSettings", () => {
     }
   });
 
+  it("rejects a non-boolean cv.enabled with a path-qualified message", () => {
+    const bad = { ...DEFAULT_SETTINGS, cv: { enabled: "yes" } };
+    const result = parseSettings(bad);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues).toEqual(expect.arrayContaining([expect.stringContaining("cv.enabled must be a boolean")]));
+    }
+  });
+
   it("collects every validation issue across nested and top-level fields, not just the first", () => {
     const bad = {
       ...DEFAULT_SETTINGS,
@@ -178,6 +187,27 @@ describe("withDefaults", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.idlePause).toEqual(DEFAULT_SETTINGS.idlePause);
+    }
+  });
+
+  it("fills cv with the default when reading a settings file written before that field existed", () => {
+    const stored = {
+      reminders: DEFAULT_SETTINGS.reminders,
+      pomodoro: DEFAULT_SETTINGS.pomodoro,
+      water: DEFAULT_SETTINGS.water,
+      idlePause: DEFAULT_SETTINGS.idlePause,
+      snoozeMs: DEFAULT_SETTINGS.snoozeMs,
+      maxSnoozes: DEFAULT_SETTINGS.maxSnoozes,
+      volume: DEFAULT_SETTINGS.volume,
+      startWithWindows: DEFAULT_SETTINGS.startWithWindows,
+    };
+
+    const merged = withDefaults(stored);
+    const result = parseSettings(merged);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.cv).toEqual(DEFAULT_SETTINGS.cv);
     }
   });
 });

@@ -94,6 +94,20 @@ pub enum AlertStyle {
     Notify,
 }
 
+/// Replaces v2.5's `global_pause: bool` — makes "paused, but why?"
+/// representable instead of TypeScript having to separately track whether a
+/// system-triggered pause should relabel the hero. `Manual` is the home
+/// page's Pause button / the tray's "Pause / Resume all"; `System` is a
+/// sleep/wake gap (`SLEEP_GAP_MS` below) or a restored budget at startup
+/// (lib.rs's `.setup()`) — both cases where the app decided to freeze on
+/// your behalf rather than you asking it to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PauseReason {
+    Manual,
+    System,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Reminder {
     pub kind: ReminderKind,
@@ -126,12 +140,11 @@ pub struct SchedulerInner {
     pub due_queue: VecDeque<ReminderKind>,
     pub hold_until_ms: i64,
     pub last_tick_ms: i64,
-    /// User-initiated global pause (the home page's Pause/Resume button and
-    /// the tray's "Pause / Resume all" item) — distinct from idle-pausing:
-    /// this one freezes every budget regardless of activity, and also
-    /// suppresses promotion so a takeover already sitting in `due_queue`
-    /// doesn't seize the screen while the app claims to be paused.
-    pub global_pause: bool,
+    /// `None` = running. Freezes every budget regardless of activity, and
+    /// also suppresses promotion so a takeover already sitting in
+    /// `due_queue` doesn't seize the screen while the app claims to be
+    /// paused. See `PauseReason` for what distinguishes the two variants.
+    pub pause: Option<PauseReason>,
 }
 
 impl Default for SchedulerInner {
@@ -146,7 +159,7 @@ impl Default for SchedulerInner {
             due_queue: VecDeque::new(),
             hold_until_ms: 0,
             last_tick_ms: 0,
-            global_pause: false,
+            pause: None,
         }
     }
 }
@@ -170,7 +183,7 @@ pub struct TickPayload {
     pub idle_seconds: u64,
     pub reminders: Vec<ReminderSnapshot>,
     pub active_kind: Option<ReminderKind>,
-    pub global_pause: bool,
+    pub pause: Option<PauseReason>,
 }
 
 #[derive(Clone, Serialize)]
@@ -261,9 +274,9 @@ pub fn set_remaining(state: &SchedulerState, kind: ReminderKind, ms: Option<i64>
 /// Doesn't touch `last_tick_ms` — the ticker updates it unconditionally on
 /// every tick regardless of pause state, so there's no stale-elapsed gap to
 /// guard against here the way `set_remaining` guards one for a fresh budget.
-pub fn set_global_pause(state: &SchedulerState, paused: bool) {
+pub fn set_pause(state: &SchedulerState, reason: Option<PauseReason>) {
     let mut guard = state.inner.lock().unwrap();
-    guard.global_pause = paused;
+    guard.pause = reason;
 }
 
 pub fn set_reminder_configs(state: &SchedulerState, configs: &[ReminderConfigInput]) {
@@ -293,18 +306,41 @@ pub struct TickResult {
     pub promoted: Option<ReminderKind>,
 }
 
+/// Any tick-to-tick gap at or above this is treated as a sleep/suspend, not
+/// a real elapsed interval — tokio's default `MissedTickBehavior::Burst`
+/// fires a rapid catch-up volley after a resume, but only the first of
+/// those carries the large wall-clock delta (subsequent ones see ~0), so
+/// catching it once here is sufficient. Set far above a 1s tick plus any
+/// plausible stall (a debug breakpoint, a loaded machine) — a false
+/// positive here just costs a spurious pause the user clicks Resume on; a
+/// false negative fires a volley of alerts for breaks "missed" while
+/// asleep, which is the actual bug this exists to prevent.
+const SLEEP_GAP_MS: i64 = 120_000;
+
 /// The pure core of a tick: decrement every armed, running reminder, queue
 /// anything that fired, and promote at most one queued takeover. Kept
 /// independent of `AppHandle` so it's directly unit-testable — `tick()`
 /// below is a thin wrapper that holds the lock only for this call, then
 /// does all window/notification/emit work after dropping the guard.
 pub fn advance_tick(inner: &mut SchedulerInner, now: i64, idle: u64) -> TickResult {
-    let elapsed = (now - inner.last_tick_ms).max(0);
+    let raw_elapsed = (now - inner.last_tick_ms).max(0);
     inner.last_tick_ms = now;
+
+    // A cold boot (last_tick_ms starts at 0) or a real sleep both produce a
+    // huge raw_elapsed — clamping to 0 either way means neither can ever be
+    // applied as real decrement time. Only PAUSE on it when something is
+    // actually armed (an idle app waking from a cold boot has nothing to
+    // pause) and only when not already paused (a manual pause must survive
+    // a sleep as Manual, not get silently downgraded to System).
+    let slept = raw_elapsed >= SLEEP_GAP_MS;
+    if slept && inner.pause.is_none() && inner.reminders.iter().any(|r| r.remaining_ms.is_some()) {
+        inner.pause = Some(PauseReason::System);
+    }
+    let elapsed = if slept { 0 } else { raw_elapsed };
 
     let mut due_now: Vec<(ReminderKind, AlertStyle)> = Vec::new();
 
-    if inner.active.is_none() && !inner.global_pause {
+    if inner.active.is_none() && inner.pause.is_none() {
         for i in 0..inner.reminders.len() {
             let r = inner.reminders[i];
             let paused_for_idle = r.pause_when_idle && is_paused(idle, inner.pause_threshold_seconds);
@@ -327,7 +363,7 @@ pub fn advance_tick(inner: &mut SchedulerInner, now: i64, idle: u64) -> TickResu
     }
 
     let mut promoted: Option<ReminderKind> = None;
-    if !inner.global_pause && may_promote(inner.active, inner.due_queue.len(), now, inner.hold_until_ms) {
+    if inner.pause.is_none() && may_promote(inner.active, inner.due_queue.len(), now, inner.hold_until_ms) {
         if let Some(k) = inner.due_queue.pop_front() {
             inner.active = Some(k);
             promoted = Some(k);
@@ -352,10 +388,10 @@ fn tick<R: Runtime>(app: &AppHandle<R>) {
     let now = now_ms();
     let idle = idle_seconds();
 
-    let (reminders_snapshot, active, global_pause, result) = {
+    let (reminders_snapshot, active, pause, result) = {
         let mut guard = state.inner.lock().unwrap();
         let result = advance_tick(&mut guard, now, idle);
-        (guard.reminders, guard.active, guard.global_pause, result)
+        (guard.reminders, guard.active, guard.pause, result)
     }; // guard dropped here — window/notification calls below must never happen while holding the lock
 
     let _ = app.emit(
@@ -371,7 +407,7 @@ fn tick<R: Runtime>(app: &AppHandle<R>) {
                 })
                 .collect(),
             active_kind: active,
-            global_pause,
+            pause,
         },
     );
 
@@ -602,10 +638,10 @@ mod tests {
     }
 
     #[test]
-    fn global_pause_freezes_an_otherwise_running_reminder() {
+    fn pause_freezes_an_otherwise_running_reminder() {
         let mut inner = inner_with(|inner| {
             reminder_mut(inner, ReminderKind::Hydration).remaining_ms = Some(10_000);
-            inner.global_pause = true;
+            inner.pause = Some(PauseReason::Manual);
             inner.last_tick_ms = 0;
         });
         advance_tick(&mut inner, 1_000, 0);
@@ -613,10 +649,10 @@ mod tests {
     }
 
     #[test]
-    fn global_pause_blocks_promotion_of_an_already_queued_takeover() {
+    fn pause_blocks_promotion_of_an_already_queued_takeover() {
         let mut inner = inner_with(|inner| {
             inner.due_queue.push_back(ReminderKind::StandUp);
-            inner.global_pause = true;
+            inner.pause = Some(PauseReason::Manual);
             inner.last_tick_ms = 0;
         });
         let result = advance_tick(&mut inner, 1_000, 0);
@@ -629,13 +665,13 @@ mod tests {
     fn unpausing_resumes_decrementing_from_the_exact_frozen_value() {
         let mut inner = inner_with(|inner| {
             reminder_mut(inner, ReminderKind::Hydration).remaining_ms = Some(10_000);
-            inner.global_pause = true;
+            inner.pause = Some(PauseReason::Manual);
             inner.last_tick_ms = 0;
         });
         advance_tick(&mut inner, 5_000, 0); // frozen for a while
         assert_eq!(reminder_mut(&mut inner, ReminderKind::Hydration).remaining_ms, Some(10_000));
 
-        inner.global_pause = false;
+        inner.pause = None;
         advance_tick(&mut inner, 6_000, 0); // 1s of real decrement after resume
         assert_eq!(reminder_mut(&mut inner, ReminderKind::Hydration).remaining_ms, Some(9_000));
     }
@@ -652,5 +688,53 @@ mod tests {
 
         let after_cooldown = advance_tick(&mut inner, 5_000, 0);
         assert_eq!(after_cooldown.promoted, Some(ReminderKind::StandUp));
+    }
+
+    #[test]
+    fn a_sleep_gap_pauses_the_scheduler_instead_of_firing_everything() {
+        let mut inner = inner_with(|inner| {
+            reminder_mut(inner, ReminderKind::Hydration).remaining_ms = Some(10_000);
+            inner.last_tick_ms = 0;
+        });
+        // A 6-hour gap — without the clamp this would fire every armed
+        // reminder in one tick.
+        let result = advance_tick(&mut inner, 6 * 60 * 60 * 1_000, 0);
+        assert_eq!(inner.pause, Some(PauseReason::System));
+        assert_eq!(reminder_mut(&mut inner, ReminderKind::Hydration).remaining_ms, Some(10_000));
+        assert!(result.due_now.is_empty());
+    }
+
+    #[test]
+    fn a_sleep_gap_with_nothing_armed_does_not_pause_an_idle_app() {
+        let mut inner = inner_with(|inner| {
+            inner.last_tick_ms = 0; // nothing armed — mirrors a cold boot's last_tick_ms: 0 default
+        });
+        advance_tick(&mut inner, 6 * 60 * 60 * 1_000, 0);
+        assert_eq!(inner.pause, None);
+    }
+
+    #[test]
+    fn a_sleep_gap_does_not_downgrade_an_existing_manual_pause() {
+        let mut inner = inner_with(|inner| {
+            reminder_mut(inner, ReminderKind::Hydration).remaining_ms = Some(10_000);
+            inner.pause = Some(PauseReason::Manual);
+            inner.last_tick_ms = 0;
+        });
+        advance_tick(&mut inner, 6 * 60 * 60 * 1_000, 0);
+        assert_eq!(inner.pause, Some(PauseReason::Manual));
+    }
+
+    #[test]
+    fn a_gap_just_under_the_sleep_threshold_decrements_normally() {
+        let mut inner = inner_with(|inner| {
+            reminder_mut(inner, ReminderKind::Hydration).remaining_ms = Some(200_000);
+            inner.last_tick_ms = 0;
+        });
+        advance_tick(&mut inner, SLEEP_GAP_MS - 1, 0);
+        assert_eq!(inner.pause, None);
+        assert_eq!(
+            reminder_mut(&mut inner, ReminderKind::Hydration).remaining_ms,
+            Some(200_000 - (SLEEP_GAP_MS - 1))
+        );
     }
 }

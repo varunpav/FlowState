@@ -7,12 +7,20 @@ export interface ReminderSnapshot {
   remainingMs: number | null;
 }
 
+/**
+ * Mirrors Rust's `PauseReason` — `manual` is the home page's Pause button /
+ * the tray's "Pause / Resume all", `system` is a sleep/wake gap or a
+ * restored budget at startup, both cases the app froze on its own rather
+ * than the user asking it to.
+ */
+export type PauseReason = "manual" | "system";
+
 export interface TickPayload {
   nowMs: number;
   idleSeconds: number;
   reminders: ReminderSnapshot[];
   activeKind: ReminderKind | null;
-  globalPause: boolean;
+  pause: PauseReason | null;
 }
 
 export interface ReminderDuePayload {
@@ -26,7 +34,7 @@ export interface AppStateSnapshot {
   activeKind: ReminderKind | null;
   idleSeconds: number;
   nowMs: number;
-  globalPause: boolean;
+  pause: PauseReason | null;
 }
 
 export interface ReminderConfig {
@@ -52,8 +60,8 @@ export function setPauseThresholdSeconds(seconds: number): Promise<void> {
   return invoke("set_pause_threshold_seconds", { seconds });
 }
 
-export function setGlobalPause(paused: boolean): Promise<void> {
-  return invoke("set_global_pause", { paused });
+export function setPause(reason: PauseReason | null): Promise<void> {
+  return invoke("set_pause", { reason });
 }
 
 export function releaseTakeover(): Promise<void> {
