@@ -1,5 +1,1 @@
-# opencv-python 5.0 removed cv2.dnn's Caffe importer entirely ("Caffe
-# importer has been removed. Please use ONNX-converted models or use an
-# older OpenCV version.") — detector.py loads the vendored MobileNet-SSD
-# via readNetFromCaffe, so this pin is load-bearing, not a suggestion.
-opencv-python<5
+opencv-python
