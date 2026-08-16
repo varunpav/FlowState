@@ -44,11 +44,25 @@ function buildElements(): SettingsPanelElements {
     idlePauseSwitchContainerEl: document.createElement("div"),
     idlePauseThresholdRowEl: document.createElement("div"),
     idlePauseThresholdInput: input("number"),
-    cvSwitchContainerEl: document.createElement("div"),
-    cvCheckBtn: document.createElement("button"),
-    cvCheckResultEl: document.createElement("p"),
     startWithWindowsContainerEl: document.createElement("div"),
   };
+}
+
+/**
+ * The CV switch/Check-camera button/result live on the hydration card
+ * itself (settingsPanel.ts appends them into `hydrationCard.bodyEl`), not
+ * as separate elements passed into `SettingsPanelElements` — so tests find
+ * them the same way a user would, by what they say, not by a dedicated id.
+ */
+function findCvControls(el: SettingsPanelElements) {
+  const switchLabel = Array.from(el.remindersContainerEl.querySelectorAll("label")).find((l) =>
+    l.textContent?.includes("Verify with camera"),
+  )!;
+  const switchBtn = switchLabel.querySelector<HTMLButtonElement>("button")!;
+  const group = switchLabel.parentElement!;
+  const checkBtn = Array.from(group.querySelectorAll("button")).find((b) => b.textContent === "Check camera")!;
+  const resultEl = group.querySelector<HTMLParagraphElement>("p.settings-status")!;
+  return { switchBtn, checkBtn, resultEl, groupEl: group };
 }
 
 function fixture() {
@@ -177,40 +191,55 @@ describe("initSettingsPanel — water day stepper", () => {
 describe("initSettingsPanel — camera verification", () => {
   it("commits cv.enabled when the switch is toggled, off by default", async () => {
     const { el } = fixture();
-    const switchEl = el.cvSwitchContainerEl.querySelector<HTMLButtonElement>("button")!;
-    switchEl.click(); // default is off (DEFAULT_SETTINGS.cv.enabled === false) — this flips it on
+    const { switchBtn } = findCvControls(el);
+    switchBtn.click(); // default is off (DEFAULT_SETTINGS.cv.enabled === false) — this flips it on
     await flush();
 
     expect(savedSnapshots).toHaveLength(1);
     expect(savedSnapshots[0]?.cv.enabled).toBe(true);
   });
 
+  it("lives on the hydration card, dimmed when Notification is selected instead of Full screen", () => {
+    const { el } = fixture();
+    const { groupEl } = findCvControls(el);
+    expect(groupEl.classList.contains("settings-card-body-disabled")).toBe(false); // hydration defaults to "takeover"
+
+    const notificationBtn = Array.from(el.remindersContainerEl.querySelectorAll<HTMLButtonElement>("button")).find(
+      (b) => b.textContent === "Notification",
+    )!;
+    notificationBtn.click();
+
+    expect(groupEl.classList.contains("settings-card-body-disabled")).toBe(true);
+  });
+
   it("names specifically what's missing when Check camera runs", async () => {
     vi.mocked(cvSelftest).mockResolvedValue({
       opencv: true,
-      model: false,
+      model: true,
       camera: false,
-      message: "MobileNet-SSD model files are missing from cv/models/. See cv/README.md.",
+      message: "No camera could be opened (index 0).",
     });
     const { el } = fixture();
+    const { checkBtn, resultEl } = findCvControls(el);
 
-    el.cvCheckBtn.click();
+    checkBtn.click();
     await flush();
 
-    expect(el.cvCheckResultEl.hidden).toBe(false);
-    expect(el.cvCheckResultEl.textContent).toContain("model files are missing");
-    expect(el.cvCheckResultEl.classList.contains("settings-status-error")).toBe(true);
+    expect(resultEl.hidden).toBe(false);
+    expect(resultEl.textContent).toContain("No camera could be opened");
+    expect(resultEl.classList.contains("settings-status-error")).toBe(true);
   });
 
   it("shows a distinct message when the camera process can't even be spawned", async () => {
     vi.mocked(cvSelftest).mockRejectedValue("Couldn't start the camera process: program not found");
     const { el } = fixture();
+    const { checkBtn, resultEl } = findCvControls(el);
 
-    el.cvCheckBtn.click();
+    checkBtn.click();
     await flush();
 
-    expect(el.cvCheckResultEl.textContent).toContain("Couldn't run the camera check");
-    expect(el.cvCheckResultEl.classList.contains("settings-status-error")).toBe(true);
-    expect(el.cvCheckBtn.disabled).toBe(false); // re-enabled after the failure, not stuck
+    expect(resultEl.textContent).toContain("Couldn't run the camera check");
+    expect(resultEl.classList.contains("settings-status-error")).toBe(true);
+    expect(checkBtn.disabled).toBe(false); // re-enabled after the failure, not stuck
   });
 });

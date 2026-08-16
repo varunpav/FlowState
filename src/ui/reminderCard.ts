@@ -70,6 +70,8 @@ function buildMinutesField(
 export interface ReminderCardHandle {
   getValue(): ReminderSettings;
   setValue(value: ReminderSettings): void;
+  /** The card's expandable body — settingsPanel.ts appends the hydration-only CV verification row into this, after the standard fields. */
+  bodyEl: HTMLElement;
 }
 
 /** One accordion card for hydration/eyeBreak/standUp: enable, interval, attention-grabber style. */
@@ -126,6 +128,7 @@ export function mountReminderCard(
       segmented.set(value.alertStyle);
       syncEnabledState();
     },
+    bodyEl: body,
   };
 }
 

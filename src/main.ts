@@ -327,9 +327,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       idlePauseSwitchContainerEl: document.querySelector("#settings-idle-pause-switch")!,
       idlePauseThresholdRowEl: document.querySelector("#settings-idle-pause-threshold-row")!,
       idlePauseThresholdInput: document.querySelector("#settings-idle-pause-threshold")!,
-      cvSwitchContainerEl: document.querySelector("#settings-cv-switch")!,
-      cvCheckBtn: document.querySelector("#settings-cv-check")!,
-      cvCheckResultEl: document.querySelector("#settings-cv-check-result")!,
       startWithWindowsContainerEl: document.querySelector("#settings-start-with-windows-switch")!,
     },
     settings,
@@ -429,6 +426,12 @@ window.addEventListener("DOMContentLoaded", async () => {
     const hydrationRemainingMs = payload.reminders.find((r) => r.kind === "hydration")?.remainingMs ?? null;
     const hydrationDueSoon =
       settings.cv.enabled &&
+      // "Verify with camera" can be toggled on while hydration's own
+      // Attention Grabber is set to Notification (dimmed in Settings, but
+      // not forced off — see settingsPanel.ts's syncCvRowDisabled). A
+      // notify-style reminder never opens the takeover at all, so
+      // pre-warming for one would just leave the camera running for nothing.
+      settings.reminders.hydration.alertStyle === "takeover" &&
       payload.pause === null &&
       hydrationRemainingMs !== null &&
       hydrationRemainingMs <= CV_PREWARM_MS;

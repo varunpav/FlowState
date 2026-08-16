@@ -29,9 +29,6 @@ export interface SettingsPanelElements {
   idlePauseSwitchContainerEl: HTMLElement;
   idlePauseThresholdRowEl: HTMLElement;
   idlePauseThresholdInput: HTMLInputElement;
-  cvSwitchContainerEl: HTMLElement;
-  cvCheckBtn: HTMLButtonElement;
-  cvCheckResultEl: HTMLElement;
   startWithWindowsContainerEl: HTMLElement;
 }
 
@@ -188,10 +185,50 @@ export function initSettingsPanel(
     }
   }
 
-  const hydrationCard = mountReminderCard(el.remindersContainerEl, "hydration", settings.reminders.hydration, commit);
+  // Hydration's onChange also re-syncs the CV row below — enabling/disabling
+  // the reminder or flipping its Attention Grabber choice all need to
+  // re-evaluate whether "Verify with camera" should be interactive.
+  const hydrationCard = mountReminderCard(el.remindersContainerEl, "hydration", settings.reminders.hydration, () => {
+    syncCvRowDisabled();
+    void commit();
+  });
   const pomodoroCard = mountPomodoroCard(el.remindersContainerEl, settings.pomodoro, commit);
   const eyeBreakCard = mountReminderCard(el.remindersContainerEl, "eyeBreak", settings.reminders.eyeBreak, commit);
   const standUpCard = mountReminderCard(el.remindersContainerEl, "standUp", settings.reminders.standUp, commit);
+
+  // Lives on the hydration card itself, under Attention Grabber, rather than
+  // as a 3rd choice alongside Full screen/Notification — it's an add-on to
+  // full-screen mode specifically (there's no takeover to show a camera pane
+  // on during a plain notification), not a distinct alert style of its own.
+  const cvSwitch = createSwitch(settings.cv.enabled, () => void commit());
+  const cvSwitchLabel = document.createElement("label");
+  cvSwitchLabel.className = "settings-field settings-field-checkbox";
+  cvSwitchLabel.title = "Camera runs only while this takeover is on screen; no frame is ever saved. See cv/README.md for setup.";
+  cvSwitchLabel.append(cvSwitch.el, document.createTextNode("Verify with camera"));
+
+  const cvCheckBtn = document.createElement("button");
+  cvCheckBtn.type = "button";
+  cvCheckBtn.textContent = "Check camera";
+  const cvCheckRow = document.createElement("div");
+  cvCheckRow.className = "row";
+  cvCheckRow.append(cvCheckBtn);
+
+  const cvCheckResultEl = document.createElement("p");
+  cvCheckResultEl.className = "settings-status";
+  cvCheckResultEl.hidden = true;
+
+  const cvGroupEl = document.createElement("div");
+  cvGroupEl.append(cvSwitchLabel, cvCheckRow, cvCheckResultEl);
+  hydrationCard.bodyEl.append(cvGroupEl);
+
+  // Only meaningful for a full-screen takeover — there's no overlay to show
+  // a camera pane on during a plain notification, so dim it (without losing
+  // the toggled value) whenever "Notification" is the current choice.
+  function syncCvRowDisabled() {
+    const fullScreenSelected = hydrationCard.getValue().alertStyle === "takeover";
+    cvGroupEl.classList.toggle("settings-card-body-disabled", !fullScreenSelected);
+  }
+  syncCvRowDisabled();
 
   const startWithWindowsSwitch = createSwitch(false, (value) => {
     // Persist first — the settings commit must never depend on the OS
@@ -209,9 +246,6 @@ export function initSettingsPanel(
     void commit();
   });
   el.idlePauseSwitchContainerEl.replaceChildren(idlePauseSwitch.el);
-
-  const cvSwitch = createSwitch(false, () => void commit());
-  el.cvSwitchContainerEl.replaceChildren(cvSwitch.el);
 
   // Stepped by the last week only — `addDays` on `dayKeyOf`'s pure-UTC day
   // keys, never a local-timezone Date, so this can't drift a day off near a
@@ -247,7 +281,8 @@ export function initSettingsPanel(
     el.idlePauseThresholdInput.value = String(settings.idlePause.thresholdSeconds);
     syncIdlePauseDisabled();
     cvSwitch.set(settings.cv.enabled);
-    el.cvCheckResultEl.hidden = true;
+    syncCvRowDisabled();
+    cvCheckResultEl.hidden = true;
     el.statusEl.hidden = true;
     // The OS registry is the source of truth, not the persisted flag — it
     // can drift if the user removes the entry via Task Manager's Startup
@@ -308,30 +343,30 @@ export function initSettingsPanel(
   });
 
   // Doubles as the setup diagnostic (cv/README.md) and the "permissions
-  // check" surface — python-not-installed, opencv-missing, model-files-
-  // missing, and camera-unavailable are otherwise indistinguishable to a
-  // user as "the camera pane didn't show up."
-  el.cvCheckBtn.addEventListener("click", () => {
+  // check" surface — python-not-installed, opencv-missing, and
+  // camera-unavailable are otherwise indistinguishable to a user as "the
+  // camera pane didn't show up."
+  cvCheckBtn.addEventListener("click", () => {
     void (async () => {
-      el.cvCheckBtn.disabled = true;
-      el.cvCheckResultEl.hidden = false;
-      el.cvCheckResultEl.classList.remove("settings-status-error", "settings-status-ok");
-      el.cvCheckResultEl.textContent = "Checking…";
+      cvCheckBtn.disabled = true;
+      cvCheckResultEl.hidden = false;
+      cvCheckResultEl.classList.remove("settings-status-error", "settings-status-ok");
+      cvCheckResultEl.textContent = "Checking…";
       try {
         const result = await cvSelftest();
-        const ok = result.opencv && result.model && result.camera;
-        el.cvCheckResultEl.textContent = result.message;
-        el.cvCheckResultEl.classList.toggle("settings-status-error", !ok);
-        el.cvCheckResultEl.classList.toggle("settings-status-ok", ok);
+        const ok = result.opencv && result.camera;
+        cvCheckResultEl.textContent = result.message;
+        cvCheckResultEl.classList.toggle("settings-status-error", !ok);
+        cvCheckResultEl.classList.toggle("settings-status-ok", ok);
       } catch (err) {
         // cv_selftest itself failing to spawn (Python isn't on PATH at all)
         // is a rejected promise, not a `{opencv:false,...}` result — the
         // camera light can never come on without a process, but this case
         // still needs its own message rather than looking like a hang.
-        el.cvCheckResultEl.textContent = `Couldn't run the camera check: ${err instanceof Error ? err.message : String(err)}`;
-        el.cvCheckResultEl.classList.add("settings-status-error");
+        cvCheckResultEl.textContent = `Couldn't run the camera check: ${err instanceof Error ? err.message : String(err)}`;
+        cvCheckResultEl.classList.add("settings-status-error");
       } finally {
-        el.cvCheckBtn.disabled = false;
+        cvCheckBtn.disabled = false;
       }
     })();
   });
