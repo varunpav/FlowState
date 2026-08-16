@@ -200,6 +200,7 @@ h1 {
   text-align: center;
   color: var(--blue-dark);
   font-size: 0.95em;
+  font-style: italic;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
@@ -277,6 +278,7 @@ h1 {
 .water-range-stat {
   margin: 0;
   font-size: 0.8em;
+  text-align: center;
   color: var(--ink-soft);
   text-align: left;
 }
@@ -301,7 +303,7 @@ h1 {
 }
 
 .water-entry-custom-input {
-  flex: 1;
+  flex: 2;
   min-width: 0;
 }
 

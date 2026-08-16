@@ -214,7 +214,7 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
     renderWater(log: DailyLog, todayKey: string, goalOz: number) {
       const today = entryOn(log, todayKey);
       ring.setProgress(goalOz > 0 ? today.oz / goalOz : 0);
-      ring.setLabel(`${today.oz}\n/${goalOz}`);
+      ring.setLabel(`${today.oz} / ${goalOz}`);
 
       bars.render(log, todayKey, goalOz);
 
