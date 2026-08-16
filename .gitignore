@@ -26,3 +26,4 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
+cv/__pycache__/detector.cpython-310.pyc
