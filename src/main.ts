@@ -29,6 +29,9 @@ import { initTakeover } from "./ui/takeover";
 
 let inactiveOverlayEl: HTMLElement | null;
 
+/** How far ahead of an imminent hydration takeover to start the camera, so it has a frame ready instead of showing blank when the takeover actually appears. */
+const CV_PREWARM_MS = 3_000;
+
 function buildReminderConfigs(settings: Settings, pomodoroState: PomodoroState): ReminderConfig[] {
   const pauseWhenIdle = settings.idlePause.enabled;
   return [
@@ -417,6 +420,23 @@ window.addEventListener("DOMContentLoaded", async () => {
     lastSnapshot = payload.reminders;
     lastNowMs = payload.nowMs;
     renderTimerRow();
+
+    // Pre-warm the camera a few seconds ahead of an imminent hydration
+    // takeover — gated on !pause so a paused reminder frozen just under the
+    // threshold can't leave the camera running indefinitely with nothing
+    // ever firing to justify it. cancelCvPrewarm() is a safe no-op when
+    // there's nothing to cancel or a takeover is already showing.
+    const hydrationRemainingMs = payload.reminders.find((r) => r.kind === "hydration")?.remainingMs ?? null;
+    const hydrationDueSoon =
+      settings.cv.enabled &&
+      payload.pause === null &&
+      hydrationRemainingMs !== null &&
+      hydrationRemainingMs <= CV_PREWARM_MS;
+    if (hydrationDueSoon) {
+      takeover.prewarmCv();
+    } else {
+      takeover.cancelCvPrewarm();
+    }
 
     const hero = nextDue(lastArmed);
     void getCurrentWindow().setTitle(

@@ -28,6 +28,20 @@ export interface TakeoverElements {
 
 export interface Takeover {
   show(kind: ReminderKind): void;
+  /**
+   * Starts the camera process ahead of an imminent hydration takeover
+   * (main.ts calls this once hydration's remaining time drops to a few
+   * seconds), so a frame is already flowing by the time `show()` actually
+   * runs instead of the camera pane starting blank. A no-op if CV is off,
+   * already active, or a takeover is currently showing.
+   */
+  prewarmCv(): void;
+  /**
+   * Stops a pre-warmed camera that never turned into a real takeover — the
+   * reminder got paused, reset, or CV got disabled before it fired. Never
+   * cancels while a takeover is actually showing; that's `hide()`'s job.
+   */
+  cancelCvPrewarm(): void;
 }
 
 export interface TakeoverCallbacks {
@@ -91,7 +105,18 @@ export function initTakeover(
     el.cvPaneEl.hidden = !showPane;
     el.skipRowEl.hidden = !showPane;
     el.cvPromptEl.textContent = cvPrompt(status);
-    waterEntry?.setEnabled(waterEntryUnlocked(status));
+    const unlocked = waterEntryUnlocked(status);
+    waterEntry?.setEnabled(unlocked);
+    // While CV is actually in play (starting/watching/verified/failed),
+    // hide the water-entry buttons entirely rather than showing them
+    // visibly disabled next to Skip — a grayed-out "Add" sitting beside an
+    // active Skip button read as a second, redundant dismiss action.
+    // Guarded to `status !== "off"` so this never fights show()'s own
+    // handling of the non-CV and non-hydration cases, which set
+    // waterEntryContainerEl.hidden directly before setCvStatus("off") runs.
+    if (status !== "off") {
+      el.waterEntryContainerEl.hidden = !unlocked;
+    }
   }
 
   /** Idempotent and best-effort — the camera light must go out regardless of whether the process was actually running or the IPC call itself fails. */
@@ -208,7 +233,18 @@ export function initTakeover(
         });
 
         if (settings.cv.enabled) {
-          startCv();
+          if (cvStatus === "off") {
+            // No pre-warm in flight (e.g. CV was only just enabled, too
+            // late for main.ts's ~3s-ahead prewarmCv() to have caught it)
+            // — start fresh here as a fallback.
+            startCv();
+          } else {
+            // Already starting/watching/verified/failed from a prewarm —
+            // reuse it rather than spawning a second process. Re-apply the
+            // current status to the elements this call just (re)created,
+            // in particular the fresh `waterEntry` from mountWaterEntry above.
+            setCvStatus(cvStatus);
+          }
         } else {
           setCvStatus("off");
         }
@@ -238,6 +274,20 @@ export function initTakeover(
             : el.skipBtn
           : el.confirmBtn;
       primaryControl?.focus();
+    },
+
+    prewarmCv() {
+      if (!settings.cv.enabled) return;
+      if (cvStatus !== "off") return; // already warming, active, or failed — nothing to do
+      if (activeKind !== null) return; // a different takeover is showing right now; don't turn the camera on behind it
+      startCv();
+    },
+
+    cancelCvPrewarm() {
+      if (activeKind !== null) return; // never cancel while a real takeover is showing — that's hide()'s job
+      if (cvStatus === "off") return; // nothing to cancel
+      stopCv();
+      setCvStatus("off");
     },
   };
 }
