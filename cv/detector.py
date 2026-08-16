@@ -44,13 +44,28 @@ VOC_CLASSES = [
     "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor",
 ]
 BOTTLE_CLASS_ID = VOC_CLASSES.index("bottle")
-DETECTION_CONFIDENCE_THRESHOLD = 0.5
+# Lower than the textbook 0.5 — a bottle tilted back to drink looks quite
+# different from the mostly-upright bottles MobileNet-SSD/VOC was trained
+# on, and its confidence dips accordingly. Still well above the noise floor
+# for a bottle-sized object at typical webcam distance.
+DETECTION_CONFIDENCE_THRESHOLD = 0.35
 
 FRAME_WIDTH = 320
 FRAME_HEIGHT = 240
+# MobileNet-SSD's own input_shape (see MobileNetSSD_deploy.prototxt) is a
+# fixed 300x300, independent of the capture/display resolution above —
+# feeding it a 320x240 blob would silently distort the aspect ratio the
+# network was trained on and degrade detection quality.
+DNN_INPUT_SIZE = 300
 TARGET_FPS = 10
 JPEG_QUALITY = 60
 HOLD_FRAMES = 12  # ~1.2s at TARGET_FPS — a bottle merely passing through frame doesn't count
+# A single missed frame (tilting the bottle back to drink changes its
+# detected shape and can drop it for a frame or two) must not erase all
+# progress — decay is a few frames' worth per miss rather than a hard reset,
+# so brief gaps survive but sustained absence still resets in well under a
+# second.
+HOLD_DECAY_PER_MISS = 3
 
 
 def emit(event: dict) -> None:
@@ -148,7 +163,7 @@ def run_live() -> None:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
 
-            blob = cv2.dnn.blobFromImage(frame, 0.007843, (FRAME_WIDTH, FRAME_HEIGHT), 127.5)
+            blob = cv2.dnn.blobFromImage(frame, 0.007843, (DNN_INPUT_SIZE, DNN_INPUT_SIZE), 127.5)
             net.setInput(blob)
             detections = net.forward()  # shape [1, 1, N, 7]: [_, _, _, class_id, confidence, x1, y1, x2, y2] (x/y normalized 0-1)
 
@@ -170,7 +185,10 @@ def run_live() -> None:
             face_box = tuple(faces[0]) if len(faces) > 0 else None
 
             drinking_this_frame = face_box is not None and bottle_box is not None and is_drinking(face_box, bottle_box)
-            consecutive_hold_frames = consecutive_hold_frames + 1 if drinking_this_frame else 0
+            if drinking_this_frame:
+                consecutive_hold_frames = min(HOLD_FRAMES, consecutive_hold_frames + 1)
+            else:
+                consecutive_hold_frames = max(0, consecutive_hold_frames - HOLD_DECAY_PER_MISS)
 
             # Draw AFTER the geometry check so the boxes on screen exactly
             # match what was evaluated, not a stale previous frame's boxes.

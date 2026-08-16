@@ -12,8 +12,9 @@ dist
 dist-ssr
 *.local
 
-# CV model files — not vendored, see cv/README.md's setup section
-cv/models/
+# Python bytecode cache
+__pycache__/
+*.pyc
 
 # Editor directories and files
 .vscode/*

@@ -26,7 +26,7 @@ Since the core of the app is already an interval timer with screen-lock behavior
   - Microsoft C++ Build Tools (the "Desktop development with C++" workload from the [VS Build Tools installer](https://visualstudio.microsoft.com/visual-cpp-build-tools/))
   - WebView2 Runtime — already installed on Windows 11 by default; on Windows 10 grab it from [Microsoft's WebView2 page](https://developer.microsoft.com/microsoft-edge/webview2/)
 - **macOS/Linux:** see [Tauri's prerequisites guide](https://v2.tauri.app/start/prerequisites/) for the platform-specific webview/toolchain deps — this app was built and tested on Windows, so those paths are unverified here.
-- **Optional — Python 3 + `opencv-python`**, only if you want camera drink verification (off by default). See [`cv/README.md`](./cv/README.md) for the two-step setup. Everything else works with no Python installed at all.
+- **Optional — Python 3 + `pip install -r cv/requirements.txt`**, only if you want camera drink verification (off by default). The model files are vendored in the repo, so that's the only setup step — see [`cv/README.md`](./cv/README.md). Everything else works with no Python installed at all.
 
 ### Setup
 

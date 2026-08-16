@@ -7,21 +7,20 @@ water — see the main [README](../README.md)'s feature description for the user
 ## Setup
 
 ```bash
-pip install opencv-python
+pip install -r cv/requirements.txt
 ```
 
-Then download the two MobileNet-SSD (PASCAL VOC) model files into `cv/models/` (created if it
-doesn't exist):
+**The version pin matters**: `opencv-python` 5.0 removed `cv2.dnn`'s Caffe importer entirely
+(`readNetFromCaffe` no longer exists — even the generic `readNet` refuses Caffe files with
+*"Caffe importer has been removed. Please use ONNX-converted models or use an older OpenCV
+version."*). `detector.py` loads the vendored MobileNet-SSD via `readNetFromCaffe`, so this repo
+targets the last 4.x line (`opencv-python<5`) until/unless the model is ported to ONNX.
 
-- `MobileNetSSD_deploy.prototxt`
-- `MobileNetSSD_deploy.caffemodel`
+The two MobileNet-SSD (PASCAL VOC) model files — `cv/models/MobileNetSSD_deploy.prototxt` and
+`cv/models/MobileNetSSD_deploy.caffemodel` (~23MB) — are vendored directly in this repo, not
+downloaded at setup time. `pip install` is the only step.
 
-Both are widely mirrored under the original `chuanqi305/MobileNet-SSD` GitHub repo. This project
-doesn't vendor them (`cv/models/` is gitignored) — they're a few MB and not something to carry in
-version control.
-
-Once both are in place, verify everything's wired up correctly from Settings → **Check camera**,
-or directly:
+Verify everything's wired up correctly from Settings → **Check camera**, or directly:
 
 ```bash
 python cv/detector.py --selftest
