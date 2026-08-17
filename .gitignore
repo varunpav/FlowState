@@ -16,6 +16,9 @@ dist-ssr
 __pycache__/
 *.pyc
 
+# Local notes for build checklist
+VERIFICATION.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -71,23 +71,4 @@ python -m unittest discover cv                        # CV drink-detection geome
 npm run tauri build
 ```
 
-Produces an MSI and NSIS installer under `src-tauri/target/release/bundle/` (Windows) — install and run that rather than the dev build to test OS-level behavior that differs between `tauri dev` and an installed app (system tray persistence, autostart, Windows toast notifications). See [`VERIFICATION.md`](./VERIFICATION.md) for the full checklist of what specifically needs an installed build to check.
-
-## Distribution
-
-The installer above is **unsigned**, so Windows SmartScreen shows an "unrecognized app" warning on first run. Fixing that needs a code-signing certificate, which isn't something a build step can add on its own:
-
-- **OV (Organization Validation) certificate** (~$200–300/year) — removes the "unrecognized publisher" wording but SmartScreen's reputation system still flags a low-download-count app for a while.
-- **EV (Extended Validation) certificate** (~$300–500/year) — gets instant SmartScreen reputation, since EV issuance requires more identity verification up front. The faster route if this is ever distributed beyond a handful of people.
-
-Once a certificate exists, `src-tauri/tauri.conf.json`'s `bundle.windows` object takes:
-
-```json
-"windows": {
-  "certificateThumbprint": "...",
-  "digestAlgorithm": "sha256",
-  "timestampUrl": "http://timestamp.digicert.com"
-}
-```
-
-`tauri build` then signs the MSI/NSIS output automatically — no other pipeline changes needed. Auto-updates (`tauri-plugin-updater`) are a separate, later concern and also assume a signed build.
+Produces an MSI and NSIS installer under `src-tauri/target/release/bundle/` (Windows) — install and run that rather than the dev build to test OS-level behavior that differs between `tauri dev` and an installed app (system tray persistence, autostart, Windows toast notifications).
