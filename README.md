@@ -10,13 +10,14 @@ Since the core of the app is already an interval timer with screen-lock behavior
 
 - **TypeScript** — app logic and UI
 - **Rust** — backend/system-level work (screen takeover, activity detection)
+- **Python** - CV water drink verification bonus functionality
 - **Tauri** — desktop app framework. Chose Tauri over Electron for a lighter footprint: it ships a native webview instead of bundling Chromium, which keeps the binary small and memory usage low for a background app that's meant to run all day. It also let me offload the system-level pieces (activity detection, screen takeover) to Rust instead of routing everything through Node.
 
 ## Roadmap
 
 **v3.0 — CV-based drink verification (shipped, off by default):** Instead of dismissing the alert with a click, the hydration takeover can use OpenCV to confirm you actually raised something to your face before letting you log water — closing the loop between "reminded" and "actually hydrated." See the camera section below and [`cv/README.md`](./cv/README.md) for setup; it's a separate Python process the app spawns and kills around each takeover, not something running in the background.
 
-## Try it out!
+# Try it out!
 
 ### Prerequisites
 
