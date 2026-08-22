@@ -154,6 +154,69 @@ export function goalStreak(log: DailyLog, todayKey: string, goalOz: number = DAI
   return streak;
 }
 
+export interface HeatmapCell {
+  dayKey: string;
+  oz: number;
+  /** 0 = no water logged; 1-4 = quarters of goalOz reached, 4 meaning goal hit or exceeded. */
+  level: 0 | 1 | 2 | 3 | 4;
+}
+
+/** How many calendar years back the History year-stepper allows browsing, regardless of whether log data actually goes back that far — the same "bounded, not data-derived" approach as the Settings water-day stepper. */
+export const HEATMAP_YEAR_LOOKBACK = 5;
+
+function utcWeekday(dayKey: string): number {
+  return new Date(`${dayKey}T00:00:00Z`).getUTCDay(); // 0 = Sunday .. 6 = Saturday
+}
+
+function heatmapLevel(oz: number, goalOz: number): HeatmapCell["level"] {
+  if (oz <= 0) return 0;
+  if (goalOz <= 0) return 4; // no meaningful goal to compare against — any logged water is the deepest shade
+  const fraction = oz / goalOz;
+  if (fraction < 0.25) return 1;
+  if (fraction < 0.5) return 2;
+  if (fraction < 1) return 3;
+  return 4;
+}
+
+/**
+ * GitHub/LeetCode-style contribution grid for one calendar year (Jan 1
+ * through Dec 31 of `year`), oldest week first. Columns are Sunday-Saturday
+ * weeks; cells outside the year (leading/trailing padding to complete a
+ * week) or after `todayKey` (days in the current year that haven't happened
+ * yet) are `null`, so the grid stays a rectangular 7-row-per-column shape
+ * regardless of which weekday January 1st falls on.
+ */
+export function calendarYearHeatmap(
+  log: DailyLog,
+  year: number,
+  todayKey: string,
+  goalOz: number = DAILY_GOAL_OZ,
+): (HeatmapCell | null)[][] {
+  const jan1 = `${year}-01-01`;
+  const dec31 = `${year}-12-31`;
+  const leadingPad = utcWeekday(jan1);
+
+  const cells: (HeatmapCell | null)[] = [];
+  for (let i = 0; i < leadingPad; i++) cells.push(null);
+
+  for (let cursor = jan1; cursor <= dec31; cursor = addDays(cursor, 1)) {
+    if (cursor > todayKey) {
+      cells.push(null); // hasn't happened yet — not "tracked but empty"
+      continue;
+    }
+    const entry = entryOn(log, cursor);
+    cells.push({ dayKey: cursor, oz: entry.oz, level: heatmapLevel(entry.oz, goalOz) });
+  }
+
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const weeks: (HeatmapCell | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) {
+    weeks.push(cells.slice(i, i + 7));
+  }
+  return weeks;
+}
+
 /**
  * Best-effort and never throws — a corrupt log day must not block startup.
  * Deliberately a DIFFERENT contract from `parseSettings`, which returns a

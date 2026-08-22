@@ -23,6 +23,7 @@ import {
 import { loadLog, localTzOffsetMinutes, saveLog } from "./logStore";
 import { loadPomodoroState, loadSettings, savePomodoroState, saveSettings } from "./settingsStore";
 import { initErrorBanner, reportError } from "./ui/errorBanner";
+import { initHistoryView } from "./ui/historyView";
 import { initHomeView } from "./ui/homeView";
 import { initSettingsPanel } from "./ui/settingsPanel";
 import { initTakeover } from "./ui/takeover";
@@ -98,14 +99,18 @@ window.addEventListener("DOMContentLoaded", async () => {
   inactiveOverlayEl = document.querySelector("#inactive-overlay");
 
   const homeViewEl = document.querySelector<HTMLElement>("#home-view")!;
+  const historyViewEl = document.querySelector<HTMLElement>("#history-view")!;
   const settingsViewEl = document.querySelector<HTMLElement>("#settings-view")!;
   const tabHomeBtn = document.querySelector<HTMLButtonElement>("#tab-home")!;
+  const tabHistoryBtn = document.querySelector<HTMLButtonElement>("#tab-history")!;
   const tabSettingsBtn = document.querySelector<HTMLButtonElement>("#tab-settings")!;
 
-  function showTab(tab: "home" | "settings") {
+  function showTab(tab: "home" | "history" | "settings") {
     homeViewEl.hidden = tab !== "home";
+    historyViewEl.hidden = tab !== "history";
     settingsViewEl.hidden = tab !== "settings";
     tabHomeBtn.classList.toggle("tab-btn-active", tab === "home");
+    tabHistoryBtn.classList.toggle("tab-btn-active", tab === "history");
     tabSettingsBtn.classList.toggle("tab-btn-active", tab === "settings");
   }
 
@@ -363,7 +368,18 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
   );
 
+  const historyView = initHistoryView({
+    heatmapEl: document.querySelector("#history-heatmap")!,
+    yearLabelEl: document.querySelector("#history-year-label")!,
+    yearPrevBtn: document.querySelector("#history-year-prev")!,
+    yearNextBtn: document.querySelector("#history-year-next")!,
+  });
+
   tabHomeBtn.addEventListener("click", () => showTab("home"));
+  tabHistoryBtn.addEventListener("click", () => {
+    historyView.render(dailyLog, todayKey, settings.water.dailyGoalOz);
+    showTab("history");
+  });
   tabSettingsBtn.addEventListener("click", () => {
     settingsPanel.refresh();
     showTab("settings");

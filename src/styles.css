@@ -17,6 +17,15 @@
   --good: #3f8f6f;
   --radius: 16px;
   --rail-width: 4.5rem;
+  /* Heatmap geometry in px, never em — the month-label row and the grid must
+     resolve to IDENTICAL column widths, and an em width resolves against each
+     element's own font-size, so a smaller label font silently narrows its
+     columns and the two rows drift apart a few px per week. Columns flex to
+     fill the card; the min is only a floor before horizontal scrolling kicks
+     in on a heavily shrunk window. */
+  --heatmap-gap: 2px;
+  --heatmap-week-min: 6px;
+  --heatmap-legend-cell: 10px;
   --shadow: 0 1px 2px rgba(55, 48, 31, 0.06), 0 8px 24px -10px rgba(55, 48, 31, 0.2);
   --shadow-lg: 0 4px 8px rgba(29, 95, 128, 0.1), 0 24px 48px -16px rgba(29, 95, 128, 0.3);
 
@@ -36,6 +45,7 @@
 }
 
 body {
+  margin: 0;
   background-color: var(--tan-bg);
   display: flex;
   min-height: 100vh;
@@ -81,6 +91,14 @@ body {
 .rail {
   width: var(--rail-width);
   flex-shrink: 0;
+  /* Pinned to the viewport so Home/Stats/Settings stay reachable without
+     scrolling back up. `align-self: flex-start` is load-bearing: as a flex
+     child the rail would otherwise stretch to the full body height, and a
+     sticky element as tall as its scroll container never actually sticks. */
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
   background: var(--tan-surface);
   border-right: 1px solid var(--tan-border);
   display: flex;
@@ -693,6 +711,199 @@ h1 {
   margin: 0 0 0.2em 0;
   text-align: center;
   color: var(--blue-dark);
+}
+
+.history-view {
+  margin: 0 auto;
+  /* Wider than the other views — the year grid needs the room to fit without
+     horizontal scrolling at the default window size; the cap just keeps it
+     from stretching absurdly wide on a maximized window. */
+  max-width: 48em;
+  width: 100%;
+  padding: 6vh 1em 2em 1em;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.9em;
+  color: var(--ink);
+}
+
+.history-view[hidden] {
+  display: none;
+}
+
+.card-label {
+  margin: 0 0 0.7em 0;
+  font-size: 0.72em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 700;
+  text-align: left;
+}
+
+/* Title on the left, year stepper on the right — one aligned header line
+   rather than the label, stepper, and legend each claiming their own row. */
+.heatmap-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  flex-wrap: wrap;
+}
+
+.heatmap-card-head .card-label {
+  margin: 0;
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72em;
+  color: var(--ink-soft);
+}
+
+/* Legend sits under the grid, right-aligned, out of the header's way. */
+.heatmap-legend-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.2em;
+}
+
+.heatmap-year-stepper {
+  width: fit-content;
+  margin: 0;
+  padding: 0.15em 0.3em;
+  font-size: 0.85em;
+}
+
+.heatmap-scroll {
+  /* Columns flex to fill the card, so this only engages once --heatmap-week-min
+     forces the grid wider than the card on a heavily shrunk window. */
+  overflow-x: auto;
+  padding: 0.6em 0.1em 0.2em;
+}
+
+.heatmap-inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--heatmap-gap);
+  width: 100%;
+}
+
+.heatmap-months {
+  display: flex;
+  gap: var(--heatmap-gap);
+}
+
+/* The month row and the week row are BOTH `flex: 1 1 0` over the same column
+   count, so they divide the same width identically and can never drift out of
+   step the way two independently-sized rows can. */
+.heatmap-month-label {
+  flex: 1 1 0;
+  min-width: var(--heatmap-week-min);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ink-soft);
+  /* A label is wider than its one-column slot; overflowing keeps every column
+     exactly equal while the text still reads left-aligned to its own month.
+     Months are >=28 days apart, so labels never collide. */
+  white-space: nowrap;
+}
+
+.heatmap-grid {
+  display: flex;
+  gap: var(--heatmap-gap);
+}
+
+.heatmap-week {
+  flex: 1 1 0;
+  min-width: var(--heatmap-week-min);
+  display: flex;
+  flex-direction: column;
+  gap: var(--heatmap-gap);
+}
+
+/* Appearance only — sizing is set per context below, since the grid's cells
+   stretch to fill the card while the legend's stay a fixed swatch size. */
+.heatmap-cell {
+  border-radius: 2px;
+  background: var(--tan-surface-sunken);
+  border: 1px solid var(--tan-border);
+  flex-shrink: 0;
+}
+
+.heatmap-week .heatmap-cell {
+  width: 100%;
+  /* Square derived from the flexed width, so the grid's height follows the
+     card's width instead of being pinned to a fixed cell size. */
+  aspect-ratio: 1;
+}
+
+.heatmap-legend .heatmap-cell {
+  width: var(--heatmap-legend-cell);
+  height: var(--heatmap-legend-cell);
+}
+
+.heatmap-cell-empty {
+  background: transparent;
+  border-color: transparent;
+}
+
+.heatmap-cell-1 {
+  background: rgba(44, 125, 160, 0.28);
+  border-color: transparent;
+}
+
+.heatmap-cell-2 {
+  background: rgba(44, 125, 160, 0.52);
+  border-color: transparent;
+}
+
+.heatmap-cell-3 {
+  background: rgba(44, 125, 160, 0.76);
+  border-color: transparent;
+}
+
+.heatmap-cell-4 {
+  background: var(--blue);
+  border-color: var(--blue-dark);
+}
+
+.info-card {
+  text-align: left;
+}
+
+.info-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7em;
+  margin-bottom: 1.1em;
+}
+
+.info-group:last-child {
+  margin-bottom: 0;
+}
+
+.info-group-title {
+  margin: 0;
+  font-size: 0.95em;
+  font-weight: 700;
+  color: var(--blue-dark);
+}
+
+.info-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7em;
+}
+
+.info-item p {
+  margin: 0;
+  font-size: 0.88em;
+  line-height: 1.5;
+  color: var(--ink);
 }
 
 .settings-section {

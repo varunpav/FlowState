@@ -10,6 +10,7 @@ import {
   monthToDate,
   normalizeLog,
   rangeStats,
+  calendarYearHeatmap,
   removeWater,
   yearToDate,
   type DailyLog,
@@ -221,5 +222,78 @@ describe("normalizeLog", () => {
     ).toEqual({
       "2026-01-15": { oz: 0, count: 2 },
     });
+  });
+});
+
+describe("calendarYearHeatmap", () => {
+  // A future todayKey so the whole calendar year (2025) is in the past —
+  // isolates the "future days are null" behavior to its own dedicated test.
+  const farFutureToday = "2030-01-01";
+
+  it("every week has exactly 7 slots, forming a rectangular grid", () => {
+    const weeks = calendarYearHeatmap({}, 2025, farFutureToday);
+    expect(weeks.every((w) => w.length === 7)).toBe(true);
+  });
+
+  it("covers every day of the year, Jan 1 through Dec 31", () => {
+    const weeks = calendarYearHeatmap({}, 2025, farFutureToday);
+    const flat = weeks.flat().filter((c): c is NonNullable<typeof c> => c !== null);
+    expect(flat).toHaveLength(365); // 2025 is not a leap year
+    expect(flat[0]?.dayKey).toBe("2025-01-01");
+    expect(flat[flat.length - 1]?.dayKey).toBe("2025-12-31");
+  });
+
+  it("includes the extra day for a leap year", () => {
+    const weeks = calendarYearHeatmap({}, 2028, farFutureToday);
+    const flat = weeks.flat().filter((c): c is NonNullable<typeof c> => c !== null);
+    expect(flat).toHaveLength(366);
+  });
+
+  it("pads only the first and last week with nulls, never a middle week", () => {
+    const weeks = calendarYearHeatmap({}, 2025, farFutureToday);
+    for (const week of weeks.slice(1, -1)) {
+      expect(week.every((c) => c !== null)).toBe(true);
+    }
+  });
+
+  it("treats days after todayKey as null — not yet happened, not 'tracked but empty'", () => {
+    const todayKey = "2026-06-15";
+    const weeks = calendarYearHeatmap({}, 2026, todayKey);
+    const flat = weeks.flat();
+    const juneSixteenth = flat.find((c) => c?.dayKey === "2026-06-16");
+    expect(juneSixteenth).toBeUndefined();
+    const juneFifteenth = flat.find((c) => c?.dayKey === todayKey);
+    expect(juneFifteenth).toBeDefined();
+  });
+
+  it("buckets oz into quarters of the goal, an empty day at level 0", () => {
+    const todayKey = "2026-01-15";
+    const log: DailyLog = {
+      [todayKey]: { oz: 0, count: 0 },
+      "2026-01-14": { oz: 20, count: 1 },
+      "2026-01-13": { oz: 40, count: 1 },
+      "2026-01-12": { oz: 80, count: 1 },
+      "2026-01-11": { oz: 100, count: 1 },
+      "2026-01-10": { oz: 150, count: 1 },
+    };
+    const flat = calendarYearHeatmap(log, 2026, todayKey, 100)
+      .flat()
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+    const byKey = new Map(flat.map((c) => [c.dayKey, c.level]));
+    expect(byKey.get(todayKey)).toBe(0);
+    expect(byKey.get("2026-01-14")).toBe(1);
+    expect(byKey.get("2026-01-13")).toBe(2);
+    expect(byKey.get("2026-01-12")).toBe(3);
+    expect(byKey.get("2026-01-11")).toBe(4);
+    expect(byKey.get("2026-01-10")).toBe(4);
+  });
+
+  it("treats a zero/negative goal as any logged water being the deepest shade", () => {
+    const todayKey = "2026-01-15";
+    const log: DailyLog = { [todayKey]: { oz: 5, count: 1 } };
+    const flat = calendarYearHeatmap(log, 2026, todayKey, 0)
+      .flat()
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+    expect(flat.find((c) => c.dayKey === todayKey)?.level).toBe(4);
   });
 });
