@@ -7,6 +7,60 @@ const ALERT_STYLE_LABELS: Record<AlertStyle, string> = {
   notify: "Notification",
 };
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** One glance-recognizable glyph per reminder kind, matching the .settings-icon treatment used for the top-level Settings sections in index.html. */
+const REMINDER_ICON_PATHS: Record<ReminderKind, string[]> = {
+  hydration: ["M12 2.5C9 7 6 10.8 6 14.5a6 6 0 0 0 12 0C18 10.8 15 7 12 2.5Z"],
+  pomodoro: ["M12 9v4l3 2", "M9 2h6"],
+  eyeBreak: ["M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"],
+  standUp: ["M12 8v7M8 11l4-1 4 1M9 21l3-6 3 6"],
+};
+
+function buildReminderIcon(kind: ReminderKind): HTMLElement {
+  const wrap = document.createElement("span");
+  wrap.className = "settings-icon";
+
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.8");
+
+  if (kind === "pomodoro") {
+    const circle = document.createElementNS(SVG_NS, "circle");
+    circle.setAttribute("cx", "12");
+    circle.setAttribute("cy", "13");
+    circle.setAttribute("r", "8");
+    svg.append(circle);
+  }
+  if (kind === "eyeBreak") {
+    const pupil = document.createElementNS(SVG_NS, "circle");
+    pupil.setAttribute("cx", "12");
+    pupil.setAttribute("cy", "12");
+    pupil.setAttribute("r", "3");
+    svg.append(pupil);
+  }
+  if (kind === "standUp") {
+    const head = document.createElementNS(SVG_NS, "circle");
+    head.setAttribute("cx", "12");
+    head.setAttribute("cy", "5");
+    head.setAttribute("r", "2.2");
+    svg.append(head);
+  }
+
+  for (const d of REMINDER_ICON_PATHS[kind]) {
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.append(path);
+  }
+
+  wrap.append(svg);
+  return wrap;
+}
+
 function buildSegmented(
   values: readonly AlertStyle[],
   initial: AlertStyle,
@@ -92,7 +146,7 @@ export function mountReminderCard(
   });
   const labelSpan = document.createElement("span");
   labelSpan.textContent = REMINDER_LABELS[kind];
-  summary.append(enableSwitch.el, labelSpan);
+  summary.append(buildReminderIcon(kind), enableSwitch.el, labelSpan);
 
   const body = document.createElement("div");
   body.className = "settings-card-body";
@@ -193,7 +247,7 @@ export function mountPomodoroCard(
   });
   const labelSpan = document.createElement("span");
   labelSpan.textContent = "Pomodoro";
-  summary.append(enableSwitch.el, labelSpan);
+  summary.append(buildReminderIcon("pomodoro"), enableSwitch.el, labelSpan);
 
   const body = document.createElement("div");
   body.className = "settings-card-body";

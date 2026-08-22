@@ -7,13 +7,18 @@
 :root {
   --tan-bg: #f5ecda;
   --tan-surface: #fbf5e8;
+  --tan-surface-sunken: #efe3c7;
   --tan-border: #e3d3ae;
   --ink: #37301f;
   --ink-soft: #6b5f47;
   --blue: #2c7da0;
   --blue-dark: #1d5f80;
   --blue-light: #dcedf3;
+  --good: #3f8f6f;
   --radius: 16px;
+  --rail-width: 4.5rem;
+  --shadow: 0 1px 2px rgba(55, 48, 31, 0.06), 0 8px 24px -10px rgba(55, 48, 31, 0.2);
+  --shadow-lg: 0 4px 8px rgba(29, 95, 128, 0.1), 0 24px 48px -16px rgba(29, 95, 128, 0.3);
 
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif;
   font-size: 16px;
@@ -32,6 +37,13 @@
 
 body {
   background-color: var(--tan-bg);
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .error-banner {
@@ -66,29 +78,62 @@ body {
   background-color: rgba(253, 242, 242, 0.2);
 }
 
+.rail {
+  width: var(--rail-width);
+  flex-shrink: 0;
+  background: var(--tan-surface);
+  border-right: 1px solid var(--tan-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.6em;
+  padding: 1.4em 0;
+}
+
+.rail-logo {
+  width: 1.8em;
+  height: 1.8em;
+}
+
 .tabs {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   gap: 0.5em;
-  padding: 1em 0 0 0;
 }
 
 .tab-btn {
-  border-radius: 8px 8px 0 0;
+  width: 2.75em;
+  height: 2.75em;
+  padding: 0;
+  border-radius: 12px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-btn svg {
+  width: 1.35em;
+  height: 1.35em;
 }
 
 .tab-btn:hover {
   background-color: var(--blue-light);
+  color: var(--blue-dark);
 }
 
 .tab-btn-active {
-  color: var(--blue-dark);
-  border-color: var(--tan-border);
-  border-bottom-color: var(--tan-bg);
-  background-color: var(--tan-surface);
+  color: var(--tan-surface);
+  border-color: var(--blue-dark);
+  background-color: var(--blue);
+  box-shadow: var(--shadow);
+}
+
+.tab-btn-active:hover {
+  background-color: var(--blue-dark);
+  color: var(--tan-surface);
 }
 
 .container {
@@ -126,6 +171,17 @@ h1 {
   color: var(--ink);
 }
 
+/* Windows never has Iowan Old Style (a macOS font) — this app is Windows-only,
+   so the wordmark's real rendered font was always Palatino Linotype by
+   fallback. Constantia is Windows-native, warmer and better-hinted at small
+   sizes, so the wordmark asks for it directly instead of relying on a dead
+   first choice. */
+.wordmark {
+  font-family: "Constantia", "Cambria", Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+}
+
 .row {
   display: flex;
   justify-content: center;
@@ -146,10 +202,18 @@ h1 {
   border-radius: var(--radius);
   padding: 1.2em 1.4em;
   width: 100%;
+  box-shadow: var(--shadow);
 }
 
 .hero {
   margin: 0.4em 0 0.1em 0;
+  width: 100%;
+  max-width: 26em;
+  background: linear-gradient(165deg, var(--tan-surface) 0%, var(--blue-light) 145%);
+  border: 1px solid var(--tan-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.3em 1.2em 1.1em;
 }
 
 .hero-label {
@@ -184,6 +248,10 @@ h1 {
   font-weight: 600;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+  padding: 0.25em 0.7em;
+  border-radius: 999px;
+  background: var(--tan-surface);
+  border: 1px solid var(--tan-border);
 }
 
 /* An idle preview (configured length, not yet armed) reads as static rather than a stalled countdown. */
@@ -191,6 +259,8 @@ h1 {
   color: var(--ink-soft);
   font-weight: 500;
   opacity: 0.7;
+  background: transparent;
+  border-style: dashed;
 }
 
 .water-card {
@@ -234,15 +304,24 @@ h1 {
   position: absolute;
   inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  white-space: pre-line;
   text-align: center;
-  color: var(--blue-dark);
-  font-size: 0.95em;
-  font-style: italic;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
+}
+
+.ring-label-oz {
+  font-size: 1.3em;
+  font-weight: 700;
+  color: var(--blue-dark);
+}
+
+.ring-label-goal {
+  font-size: 0.7em;
+  color: var(--ink-soft);
+  font-style: italic;
 }
 
 .water-stats {
@@ -298,6 +377,11 @@ h1 {
   background: var(--blue);
 }
 
+/* Declared after goal-hit so today's bar always reads as today, even on a goal-hit day. */
+.bars-fill-today {
+  background: var(--blue-dark);
+}
+
 .bars-letter {
   font-size: 0.65em;
   color: var(--ink-soft);
@@ -313,6 +397,16 @@ h1 {
   margin: 0;
   font-size: 0.85em;
   color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+}
+
+.water-streak svg {
+  width: 0.95em;
+  height: 0.95em;
+  color: var(--blue);
+  flex-shrink: 0;
 }
 
 .water-range-stat {
@@ -336,6 +430,7 @@ h1 {
   background-color: var(--blue);
   color: var(--tan-surface);
   border-color: var(--blue-dark);
+  box-shadow: var(--shadow);
 }
 
 .water-entry-btn-primary:hover {
@@ -356,7 +451,7 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 0.5em;
-  background: var(--tan-bg);
+  background: var(--tan-surface-sunken);
   border: 1px solid var(--tan-border);
   border-radius: var(--radius);
   padding: 0.3em 0.4em;
@@ -427,6 +522,7 @@ h1 {
   background-color: var(--blue);
   color: var(--tan-surface);
   border-color: var(--blue-dark);
+  box-shadow: var(--shadow);
 }
 
 .pause-btn-active:hover {
@@ -502,7 +598,7 @@ h1 {
   border: 1px solid var(--tan-border);
   border-radius: 16px;
   padding: 3em 3.5em;
-  box-shadow: 0 12px 40px rgba(29, 95, 128, 0.18);
+  box-shadow: var(--shadow-lg);
 }
 
 .takeover-logo {
@@ -520,6 +616,7 @@ h1 {
   background-color: var(--blue);
   color: var(--tan-surface);
   border-color: var(--blue-dark);
+  box-shadow: var(--shadow);
 }
 
 .takeover-confirm:hover {
@@ -560,6 +657,11 @@ h1 {
   font-size: 0.9em;
 }
 
+.cv-verified {
+  color: var(--good);
+  font-weight: 600;
+}
+
 .settings-view {
   margin: 0 auto;
   max-width: 30em;
@@ -587,6 +689,24 @@ h1 {
   border: 1px solid var(--tan-border);
   border-radius: var(--radius);
   padding: 0.2em 1em;
+  box-shadow: var(--shadow);
+}
+
+.settings-icon {
+  width: 2em;
+  height: 2em;
+  border-radius: 9px;
+  background: var(--blue-light);
+  color: var(--blue-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.settings-icon svg {
+  width: 1.1em;
+  height: 1.1em;
 }
 
 .settings-note {
@@ -640,11 +760,26 @@ details[open] > summary::after {
 }
 
 .settings-card {
-  border-top: 1px solid var(--tan-border);
+  background: var(--tan-surface-sunken);
+  border: 1px solid var(--tan-border);
+  border-radius: 12px;
+  margin: 0.5em 0;
 }
 
 .settings-card:first-child {
-  border-top: none;
+  margin-top: 0.5em;
+}
+
+.settings-card:last-child {
+  margin-bottom: 0.6em;
+}
+
+.settings-card summary {
+  padding: 0.6em 0.8em;
+}
+
+.settings-card .settings-card-body {
+  padding: 0 0.8em 0.9em 0.8em;
 }
 
 .switch {
@@ -654,7 +789,7 @@ details[open] > summary::after {
   padding: 0;
   border-radius: 999px;
   border: 1px solid var(--tan-border);
-  background-color: var(--tan-bg);
+  background-color: var(--tan-surface-sunken);
   flex-shrink: 0;
   cursor: pointer;
   transition: background-color 0.15s;
@@ -714,6 +849,7 @@ details[open] > summary::after {
 
 .settings-field input {
   width: 100%;
+  background-color: var(--tan-surface-sunken);
 }
 
 .settings-field-checkbox {
@@ -750,18 +886,19 @@ details[open] > summary::after {
   font-size: 0.85em;
   padding: 0.5em 0.6em;
   color: var(--ink-soft);
-  background: var(--tan-bg);
+  background: var(--tan-surface-sunken);
 }
 
 .segmented-active {
   background-color: var(--blue) !important;
   color: var(--tan-surface) !important;
   border-color: var(--blue-dark) !important;
+  box-shadow: var(--shadow);
 }
 
 input,
 button {
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--tan-border);
   padding: 0.6em 1.2em;
   font-size: 1em;

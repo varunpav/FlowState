@@ -70,7 +70,9 @@ export interface HomeView {
   setPause(reason: PauseReason | null): void;
 }
 
-function buildRing(container: HTMLElement): { setProgress(fraction: number): void; setLabel(text: string): void } {
+function buildRing(
+  container: HTMLElement,
+): { setProgress(fraction: number): void; setLabel(ozText: string, goalText: string): void } {
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("viewBox", "0 0 120 120");
   svg.setAttribute("class", "ring-svg");
@@ -97,6 +99,12 @@ function buildRing(container: HTMLElement): { setProgress(fraction: number): voi
   const label = document.createElement("div");
   label.className = "ring-label";
 
+  const ozEl = document.createElement("span");
+  ozEl.className = "ring-label-oz";
+  const goalEl = document.createElement("span");
+  goalEl.className = "ring-label-goal";
+  label.append(ozEl, goalEl);
+
   container.replaceChildren(svg, label);
 
   return {
@@ -104,8 +112,9 @@ function buildRing(container: HTMLElement): { setProgress(fraction: number): voi
       const clamped = Math.min(1, Math.max(0, fraction));
       progress.setAttribute("stroke-dashoffset", String(RING_CIRCUMFERENCE * (1 - clamped)));
     },
-    setLabel(text: string) {
-      label.textContent = text;
+    setLabel(ozText: string, goalText: string) {
+      ozEl.textContent = ozText;
+      goalEl.textContent = goalText;
     },
   };
 }
@@ -156,6 +165,7 @@ function buildBars(container: HTMLElement): { render(log: DailyLog, todayKey: st
         const fraction = maxOz > 0 ? d.entry.oz / maxOz : 0;
         bar.fill.style.height = `${Math.max(2, fraction * 100)}%`;
         bar.fill.classList.toggle("bars-fill-goal-hit", d.entry.oz >= goalOz);
+        bar.fill.classList.toggle("bars-fill-today", d.dayKey === todayKey);
         const dayOfWeek = new Date(`${d.dayKey}T00:00:00Z`).getUTCDay();
         bar.letter.textContent = DAY_LETTERS[dayOfWeek] ?? "";
         bar.letter.classList.toggle("bars-letter-today", d.dayKey === todayKey);
@@ -167,6 +177,19 @@ function buildBars(container: HTMLElement): { render(log: DailyLog, todayKey: st
 export function initHomeView(el: HomeViewElements, options: HomeViewOptions): HomeView {
   const ring = buildRing(el.ringContainerEl);
   const bars = buildBars(el.barsContainerEl);
+
+  const streakIcon = document.createElementNS(SVG_NS, "svg");
+  streakIcon.setAttribute("viewBox", "0 0 24 24");
+  streakIcon.setAttribute("fill", "currentColor");
+  const streakPath = document.createElementNS(SVG_NS, "path");
+  streakPath.setAttribute(
+    "d",
+    "M12 2c1 3-3 4.5-3 8a3 3 0 0 0 6 0c1.5 1 2 2.8 2 4.2A5.2 5.2 0 0 1 6.8 14C6.8 8 12 6 12 2Z",
+  );
+  streakIcon.append(streakPath);
+  const streakTextEl = document.createElement("span");
+  el.streakEl.replaceChildren(streakIcon, streakTextEl);
+
   const waterEntry: WaterEntryHandle = mountWaterEntry(el.waterEntryContainerEl, options.bottleOz, (oz) =>
     options.onWaterLogged(oz, Date.now()),
   );
@@ -236,12 +259,12 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
     renderWater(log: DailyLog, todayKey: string, goalOz: number) {
       const today = entryOn(log, todayKey);
       ring.setProgress(goalOz > 0 ? today.oz / goalOz : 0);
-      ring.setLabel(`${today.oz} / ${goalOz}`);
+      ring.setLabel(`${today.oz} oz`, `of ${goalOz}`);
 
       bars.render(log, todayKey, goalOz);
 
       const streak = goalStreak(log, todayKey, goalOz);
-      el.streakEl.textContent = `Streak ${streak} day${streak === 1 ? "" : "s"}`;
+      streakTextEl.textContent = `Streak ${streak} day${streak === 1 ? "" : "s"}`;
 
       const month = monthToDate(log, todayKey, goalOz);
       el.monthStatsEl.textContent =

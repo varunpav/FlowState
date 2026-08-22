@@ -105,6 +105,7 @@ export function initTakeover(
     el.cvPaneEl.hidden = !showPane;
     el.skipRowEl.hidden = !showPane;
     el.cvPromptEl.textContent = cvPrompt(status);
+    el.cvPromptEl.classList.toggle("cv-verified", status === "verified");
     const unlocked = waterEntryUnlocked(status);
     waterEntry?.setEnabled(unlocked);
     // While CV is actually in play (starting/watching/verified/failed),
