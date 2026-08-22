@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in Flow State isn't working right
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what actually happened instead?
+      placeholder: |
+        1. Opened the app, hydration was armed at 30 minutes
+        2. Put the laptop to sleep for 10 minutes, woke it up
+        3. Expected: countdown frozen, "System restart - Paused"
+        4. Actual: countdown kept running as if nothing happened
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build
+    attributes:
+      label: How were you running it?
+      options:
+        - Installed build (MSI or NSIS)
+        - Dev build (npm run tauri dev)
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Settings has no version display yet — check the installer filename, or the version in package.json if running from source.
+      placeholder: "0.1.0"
+
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 24H2"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Anything else — logs, screenshots, error banner text
+      description: If a red banner appeared at the top of the window, its exact text is very useful here.
