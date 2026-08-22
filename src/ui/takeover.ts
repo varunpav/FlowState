@@ -70,15 +70,24 @@ export function initTakeover(
   chime: ChimeHandle,
   callbacks: TakeoverCallbacks,
 ): Takeover {
-  let snoozeState: SnoozeState = resetSnoozeState();
+  // Keyed per reminder kind — a shared single counter would let snoozing
+  // Hydration eat into Pomodoro's/eye break's/stand-up's snooze budget (and
+  // vice versa) any time more than one reminder is enabled, since they'd all
+  // be reading and exhausting the same count. Missing keys mean "never
+  // snoozed," equivalent to resetSnoozeState().
+  let snoozeStateByKind: Partial<Record<ReminderKind, SnoozeState>> = {};
   let activeKind: ReminderKind | null = null;
   let waterEntry: WaterEntryHandle | null = null;
   let cvStatus: CvStatus = "off";
   let cvUnlisten: (() => void)[] = [];
   let cvStartupTimeout: ReturnType<typeof setTimeout> | undefined;
 
+  function snoozeStateFor(kind: ReminderKind): SnoozeState {
+    return snoozeStateByKind[kind] ?? resetSnoozeState();
+  }
+
   function syncSnoozeAvailability() {
-    const exhausted = snoozeState.snoozeCount >= settings.maxSnoozes;
+    const exhausted = activeKind !== null && snoozeStateFor(activeKind).snoozeCount >= settings.maxSnoozes;
     el.snoozeBtn.disabled = exhausted;
     el.snoozeBtn.textContent = `Snooze ${settings.snoozeMs / 60_000} min`;
     el.snoozeHintEl.hidden = !exhausted;
@@ -186,7 +195,7 @@ export function initTakeover(
     // pre-armed by the caller before show() ran, so this click has nothing
     // left to wait on.
     await releaseTakeover();
-    snoozeState = resetSnoozeState();
+    delete snoozeStateByKind[activeKind];
     hide();
   }
 
@@ -197,7 +206,9 @@ export function initTakeover(
 
   el.snoozeBtn.addEventListener("click", () => {
     void (async () => {
-      const result = applySnooze(snoozeState, Date.now(), {
+      const kind = activeKind;
+      if (!kind) return;
+      const result = applySnooze(snoozeStateFor(kind), Date.now(), {
         snoozeMs: settings.snoozeMs,
         maxSnoozes: settings.maxSnoozes,
       });
@@ -205,13 +216,10 @@ export function initTakeover(
         syncSnoozeAvailability();
         return;
       }
-      snoozeState = result.state;
-      const kind = activeKind;
-      if (kind) {
-        // Overwrites the pre-armed full interval — snoozing means "not the
-        // full interval, just a short grace period."
-        await setRemainingMs(kind, settings.snoozeMs);
-      }
+      snoozeStateByKind[kind] = result.state;
+      // Overwrites the pre-armed full interval — snoozing means "not the
+      // full interval, just a short grace period."
+      await setRemainingMs(kind, settings.snoozeMs);
       await releaseTakeover();
       hide();
     })();
