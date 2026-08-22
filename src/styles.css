@@ -193,6 +193,13 @@ h1 {
   display: none;
 }
 
+.settings-test-row button {
+  flex: 1;
+  font-size: 0.85em;
+  padding-left: 0.4em;
+  padding-right: 0.4em;
+}
+
 .countdown {
   font-size: 3em;
   font-variant-numeric: tabular-nums;
@@ -531,10 +538,6 @@ h1 {
 
 .pause-btn-active:hover {
   background-color: var(--blue-dark);
-}
-
-.debug-row {
-  margin-top: 0.4em;
 }
 
 .ghost-btn {

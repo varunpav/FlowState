@@ -196,8 +196,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       intervalSliderValueEl: document.querySelector("#hydration-interval-value")!,
       startTimerBtn: document.querySelector("#start-timer")!,
       pauseBtn: document.querySelector("#pause-toggle")!,
-      testAlertBtn: document.querySelector("#test-alert")!,
-      testNotificationBtn: document.querySelector("#test-notification")!,
     },
     {
       bottleOz: settings.water.bottleOz,
@@ -289,24 +287,28 @@ window.addEventListener("DOMContentLoaded", async () => {
         renderTimerRow();
         void setPause(next).catch((e) => reportError("Toggling pause", e));
       },
-      onTestAlert: () => {
-        // Always hydration — an unpredictable "whatever's next-due" target
-        // made this button confusing to use for its actual purpose.
-        void setRemainingMs("hydration", 10_000).catch((e) => reportError("Starting test alert", e));
-      },
-      onTestNotification: () => {
-        void (async () => {
-          let granted = await isPermissionGranted();
-          if (!granted) {
-            granted = (await requestPermission()) === "granted";
-          }
-          if (granted) {
-            sendNotification({ title: "Flow State", body: "Test notification" });
-          }
-        })().catch((e) => reportError("Sending test notification", e));
-      },
     },
   );
+
+  // Test alert / Test notification live in Settings → Alerts & sound rather
+  // than as options threaded through homeView — they're standalone debug
+  // triggers, not part of the home page's own state.
+  document.querySelector<HTMLButtonElement>("#test-alert")!.addEventListener("click", () => {
+    // Always hydration — an unpredictable "whatever's next-due" target
+    // made this button confusing to use for its actual purpose.
+    void setRemainingMs("hydration", 10_000).catch((e) => reportError("Starting test alert", e));
+  });
+  document.querySelector<HTMLButtonElement>("#test-notification")!.addEventListener("click", () => {
+    void (async () => {
+      let granted = await isPermissionGranted();
+      if (!granted) {
+        granted = (await requestPermission()) === "granted";
+      }
+      if (granted) {
+        sendNotification({ title: "Flow State", body: "Test notification" });
+      }
+    })().catch((e) => reportError("Sending test notification", e));
+  });
 
   const settingsPanel = initSettingsPanel(
     {

@@ -84,18 +84,6 @@
         <p class="water-range-stat" id="water-month-stats"></p>
         <p class="water-range-stat" id="water-year-stats"></p>
       </div>
-
-      <div class="row debug-row">
-        <button id="test-alert" type="button" class="ghost-btn">Test alert in 10s</button>
-        <button
-          id="test-notification"
-          type="button"
-          class="ghost-btn"
-          title="Fires under tauri dev too, but shows up attributed to PowerShell until you run the installed build."
-        >
-          Test notification
-        </button>
-      </div>
     </main>
 
     <section class="settings-view" id="settings-view" hidden>
@@ -194,8 +182,16 @@
             Volume
             <input id="settings-volume" type="range" min="0" max="1" step="0.05" />
           </label>
-          <div class="row">
+          <div class="row settings-test-row">
             <button id="settings-test-sound" type="button">Test sound</button>
+            <button id="test-alert" type="button">Test alert (10s)</button>
+            <button
+              id="test-notification"
+              type="button"
+              title="Fires under tauri dev too, but shows up attributed to PowerShell until you run the installed build."
+            >
+              Test notification
+            </button>
           </div>
         </div>
       </details>

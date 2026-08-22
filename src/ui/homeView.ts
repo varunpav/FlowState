@@ -32,8 +32,6 @@ export interface HomeViewElements {
   intervalSliderValueEl: HTMLElement;
   startTimerBtn: HTMLButtonElement;
   pauseBtn: HTMLButtonElement;
-  testAlertBtn: HTMLButtonElement;
-  testNotificationBtn: HTMLButtonElement;
 }
 
 export interface HomeViewOptions {
@@ -50,8 +48,6 @@ export interface HomeViewOptions {
    */
   onStartTimer: (minutes: number) => void;
   onPauseToggle: () => void;
-  onTestAlert: () => void;
-  onTestNotification: () => void;
 }
 
 export interface HomeView {
@@ -207,8 +203,6 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
 
   el.startTimerBtn.addEventListener("click", () => options.onStartTimer(Number(el.intervalSliderEl.value)));
   el.pauseBtn.addEventListener("click", () => options.onPauseToggle());
-  el.testAlertBtn.addEventListener("click", () => options.onTestAlert());
-  el.testNotificationBtn.addEventListener("click", () => options.onTestNotification());
 
   return {
     renderTimers(model: TimerRowModel, nowMs: number) {

@@ -20,8 +20,6 @@ function buildElements(): HomeViewElements {
     intervalSliderValueEl: document.createElement("span"),
     startTimerBtn: document.createElement("button"),
     pauseBtn: document.createElement("button"),
-    testAlertBtn: document.createElement("button"),
-    testNotificationBtn: document.createElement("button"),
   };
 }
 
@@ -33,8 +31,6 @@ function fixture() {
     onIntervalChanged: vi.fn(),
     onStartTimer: vi.fn(),
     onPauseToggle: vi.fn(),
-    onTestAlert: vi.fn(),
-    onTestNotification: vi.fn(),
   };
   const view = initHomeView(el, options);
   return { el, options, view };
