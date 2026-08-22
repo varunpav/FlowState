@@ -426,7 +426,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const hydrationRemainingMs = payload.reminders.find((r) => r.kind === "hydration")?.remainingMs ?? null;
     const hydrationDueSoon =
       settings.cv.enabled &&
-      // "Verify with camera" can be toggled on while hydration's own
+      // "Camera verification (CV)" can be toggled on while hydration's own
       // Attention Grabber is set to Notification (dimmed in Settings, but
       // not forced off — see settingsPanel.ts's syncCvRowDisabled). A
       // notify-style reminder never opens the takeover at all, so

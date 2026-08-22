@@ -189,6 +189,10 @@ h1 {
   gap: 0.5em;
 }
 
+.row[hidden] {
+  display: none;
+}
+
 .countdown {
   font-size: 3em;
   font-variant-numeric: tabular-nums;
@@ -641,6 +645,10 @@ h1 {
   gap: 0.4em;
 }
 
+.takeover-cv-pane[hidden] {
+  display: none;
+}
+
 .takeover-cv-frame {
   width: 20em;
   max-width: 100%;
@@ -866,6 +874,43 @@ details[open] > summary::after {
   font-size: 0.85em;
   margin: 0.6em 0.2em 0;
   text-align: center;
+}
+
+/* Sits below the reminder card's own fields, set apart with a divider so it
+   reads as an add-on to Full screen rather than an unrelated row dropped in
+   after the segmented control. */
+.settings-cv-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5em;
+  border-top: 1px solid var(--tan-border);
+  padding-top: 0.7em;
+  margin-top: 0.2em;
+}
+
+.settings-cv-group .settings-status {
+  margin: 0;
+  text-align: left;
+}
+
+.settings-cv-check-btn {
+  padding: 0.45em 0.9em;
+  font-size: 0.85em;
+  font-weight: 600;
+  background-color: var(--tan-surface);
+  color: var(--blue-dark);
+  border: 1px solid var(--blue);
+  box-shadow: var(--shadow);
+}
+
+.settings-cv-check-btn:hover {
+  background-color: var(--blue-light);
+}
+
+.settings-cv-check-btn:active {
+  background-color: var(--blue);
+  color: var(--tan-surface);
 }
 
 .settings-status-error {

@@ -56,7 +56,7 @@ function buildElements(): SettingsPanelElements {
  */
 function findCvControls(el: SettingsPanelElements) {
   const switchLabel = Array.from(el.remindersContainerEl.querySelectorAll("label")).find((l) =>
-    l.textContent?.includes("Verify with camera"),
+    l.textContent?.includes("Camera verification"),
   )!;
   const switchBtn = switchLabel.querySelector<HTMLButtonElement>("button")!;
   const group = switchLabel.parentElement!;

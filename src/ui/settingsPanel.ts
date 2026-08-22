@@ -187,7 +187,7 @@ export function initSettingsPanel(
 
   // Hydration's onChange also re-syncs the CV row below — enabling/disabling
   // the reminder or flipping its Attention Grabber choice all need to
-  // re-evaluate whether "Verify with camera" should be interactive.
+  // re-evaluate whether "Camera verification (CV)" should be interactive.
   const hydrationCard = mountReminderCard(el.remindersContainerEl, "hydration", settings.reminders.hydration, () => {
     syncCvRowDisabled();
     void commit();
@@ -204,21 +204,20 @@ export function initSettingsPanel(
   const cvSwitchLabel = document.createElement("label");
   cvSwitchLabel.className = "settings-field settings-field-checkbox";
   cvSwitchLabel.title = "Camera runs only while this takeover is on screen; no frame is ever saved. See cv/README.md for setup.";
-  cvSwitchLabel.append(cvSwitch.el, document.createTextNode("Verify with camera"));
+  cvSwitchLabel.append(cvSwitch.el, document.createTextNode("Camera verification (CV)"));
 
   const cvCheckBtn = document.createElement("button");
   cvCheckBtn.type = "button";
+  cvCheckBtn.className = "settings-cv-check-btn";
   cvCheckBtn.textContent = "Check camera";
-  const cvCheckRow = document.createElement("div");
-  cvCheckRow.className = "row";
-  cvCheckRow.append(cvCheckBtn);
 
   const cvCheckResultEl = document.createElement("p");
   cvCheckResultEl.className = "settings-status";
   cvCheckResultEl.hidden = true;
 
   const cvGroupEl = document.createElement("div");
-  cvGroupEl.append(cvSwitchLabel, cvCheckRow, cvCheckResultEl);
+  cvGroupEl.className = "settings-cv-group";
+  cvGroupEl.append(cvSwitchLabel, cvCheckBtn, cvCheckResultEl);
   hydrationCard.bodyEl.append(cvGroupEl);
 
   // Only meaningful for a full-screen takeover — there's no overlay to show
