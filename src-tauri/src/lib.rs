@@ -125,6 +125,10 @@ fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
         let _ = window.unminimize();
         let _ = window.set_focus();
     }
+    // Ticks are gated off while hidden/minimized (scheduler.rs's
+    // should_emit_tick), so the countdown the user left behind would
+    // otherwise sit stale for up to 1s after reopening from the tray.
+    scheduler::emit_state(app);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

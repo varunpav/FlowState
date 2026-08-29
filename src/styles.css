@@ -580,6 +580,9 @@ h1 {
   background: rgba(55, 48, 31, 0.35);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
+  /* It's a text hint, not a control — must never block clicks reaching the
+     real UI underneath, or the app reads as "locked" while it's showing. */
+  pointer-events: none;
 }
 
 .inactive-overlay[hidden] {

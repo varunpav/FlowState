@@ -6,6 +6,7 @@ import { isIdle } from "./core/idlePolicy";
 import { advancePomodoro, type PomodoroState } from "./core/pomodoro";
 import { nextDue, reconcileReminders, REMINDER_KINDS, REMINDER_LABELS, type ArmedReminder } from "./core/reminders";
 import type { Settings } from "./core/settings";
+import { isStaleTick } from "./core/tickPolicy";
 import { timerRowModel } from "./core/timerRow";
 import { dayKeyOf, entryOn, logWater, removeWater } from "./core/waterLog";
 import {
@@ -32,6 +33,15 @@ let inactiveOverlayEl: HTMLElement | null;
 
 /** How far ahead of an imminent hydration takeover to start the camera, so it has a frame ready instead of showing blank when the takeover actually appears. */
 const CV_PREWARM_MS = 3_000;
+
+/**
+ * If no `tick` event has landed in this long, the watchdog below re-syncs
+ * from `getState()` directly rather than waiting on a stream that may be
+ * dead — comfortably above the normal 1Hz cadence so a single skipped or
+ * stale tick doesn't trigger a needless re-sync.
+ */
+const TICK_WATCHDOG_TIMEOUT_MS = 10_000;
+const TICK_WATCHDOG_CHECK_INTERVAL_MS = 5_000;
 
 function buildReminderConfigs(settings: Settings, pomodoroState: PomodoroState): ReminderConfig[] {
   const pauseWhenIdle = settings.idlePause.enabled;
@@ -95,7 +105,15 @@ function armedFrom(snapshot: ReminderSnapshot[]): ArmedReminder[] {
     .map((r) => ({ kind: r.kind, remainingMs: r.remainingMs as number }));
 }
 
-window.addEventListener("DOMContentLoaded", async () => {
+window.addEventListener("DOMContentLoaded", () => {
+  // Uncaught, this silently skips everything after the first failing await —
+  // including onTick/onReminderDue registration — leaving a half-wired
+  // window with no countdown and no banner explaining why. Same shape as the
+  // v2.3 autostart bug errorBanner.ts's docstring describes.
+  void boot().catch((e) => reportError("Starting up", e));
+});
+
+async function boot() {
   inactiveOverlayEl = document.querySelector("#inactive-overlay");
 
   const homeViewEl = document.querySelector<HTMLElement>("#home-view")!;
@@ -122,6 +140,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   let lastSnapshot: ReminderSnapshot[] = [];
   let lastNowMs = Date.now();
   let pauseReason: PauseReason | null = null;
+  let lastTitle = "";
+  // Wall-clock time this side last received a `tick` event, live or stale —
+  // the watchdog below uses a real gap here (not the payload's own nowMs) to
+  // detect a dead event stream regardless of why it went quiet.
+  let lastTickAtMs = Date.now();
 
   const errorBannerEl = document.querySelector<HTMLElement>("#error-banner");
   if (errorBannerEl) initErrorBanner(errorBannerEl);
@@ -275,22 +298,54 @@ window.addEventListener("DOMContentLoaded", async () => {
             }
           }
 
-          lastSnapshot = (await getState()).reminders;
+          const finalState = await getState();
+          lastSnapshot = finalState.reminders;
+          // Reconcile against what Rust actually holds rather than trusting
+          // the optimistic local clear above — if that fire-and-forget
+          // setPause(null) silently failed, the button/hero must still end
+          // up matching reality instead of drifting out of sync forever.
+          if (finalState.pause !== pauseReason) {
+            pauseReason = finalState.pause;
+            homeView.setPause(pauseReason);
+          }
           renderTimerRow();
         })().catch((e) => reportError("Starting/resetting timers", e));
       },
       onPauseToggle: () => {
-        // Always toggles to/from "manual" — clicking Pause is always the
-        // user asking for it, even if a "system" pause (sleep/restart) is
-        // what's currently in effect.
-        const next: PauseReason | null = pauseReason === null ? "manual" : null;
-        pauseReason = next;
-        homeView.setPause(next);
-        // Re-render immediately so the hero label swaps to "Paused" without
-        // waiting up to a second for the next tick — the pause button's own
-        // label already updates instantly via setPause above.
-        renderTimerRow();
-        void setPause(next).catch((e) => reportError("Toggling pause", e));
+        void (async () => {
+          // Always toggles to/from "manual" — clicking Pause is always the
+          // user asking for it, even if a "system" pause (sleep/restart) is
+          // what's currently in effect.
+          const next: PauseReason | null = pauseReason === null ? "manual" : null;
+          pauseReason = next;
+          homeView.setPause(next);
+          // Re-render immediately so the hero label swaps to "Paused"
+          // without waiting up to a second for the next tick — the pause
+          // button's own label already updates instantly via setPause above.
+          renderTimerRow();
+
+          try {
+            await setPause(next);
+          } catch (e) {
+            reportError("Toggling pause", e);
+          }
+
+          // Confirm against Rust's actual state rather than trusting the
+          // optimistic local write above — a silent disagreement here (a
+          // failed IPC call, or a dead tick stream that would otherwise
+          // never correct it) is exactly what leaves the button and hero
+          // stuck lying about whether anything is actually paused.
+          try {
+            const confirmed = await getState();
+            if (confirmed.pause !== pauseReason) {
+              pauseReason = confirmed.pause;
+              homeView.setPause(pauseReason);
+              renderTimerRow();
+            }
+          } catch (e) {
+            reportError("Confirming pause state", e);
+          }
+        })();
       },
     },
   );
@@ -417,6 +472,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   await onTick((payload) => {
+    // Any tick reaching here at all is evidence the event stream is alive —
+    // record it before the staleness check below, so the watchdog's "no
+    // tick in 10s" gap tracks real silence, not just skipped stale ones.
+    lastTickAtMs = Date.now();
+    // A tick queued behind a sleep/resume backlog (or any other delivery
+    // delay) is already superseded by whatever tick is next in the queue —
+    // rendering it would just repaint with numbers about to be overwritten.
+    if (isStaleTick(payload.nowMs, Date.now())) return;
+
     // Force-hidden when idle-pause is off — the overlay would otherwise
     // claim "Paused" while every timer deliberately keeps running, which is
     // a lie the user explicitly opted out of via the Settings switch.
@@ -460,9 +524,13 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
 
     const hero = nextDue(lastArmed);
-    void getCurrentWindow().setTitle(
-      hero ? `${REMINDER_LABELS[hero.kind]} ${formatCountdown(hero.remainingMs)} — Flow State` : "Flow State",
-    );
+    const title = hero ? `${REMINDER_LABELS[hero.kind]} ${formatCountdown(hero.remainingMs)} — Flow State` : "Flow State";
+    if (title !== lastTitle) {
+      lastTitle = title;
+      void getCurrentWindow()
+        .setTitle(title)
+        .catch((e) => reportError("Updating window title", e));
+    }
 
     const nowKey = dayKeyOf(payload.nowMs, localTzOffsetMinutes());
     if (nowKey !== todayKey) {
@@ -470,6 +538,35 @@ window.addEventListener("DOMContentLoaded", async () => {
       homeView.renderWater(dailyLog, todayKey, settings.water.dailyGoalOz);
     }
   });
+
+  // A dead tick stream (the `should_emit_tick` gate skipping every tick
+  // while hidden is expected, but anything else going quiet is not) must
+  // never leave the app silently stuck on stale numbers with no way back —
+  // that combination is exactly what made the countdown-freeze bug this
+  // watchdog exists for so hard to recover from: no error, no fresh data,
+  // and every button acting on state that stopped being true hours ago.
+  setInterval(() => {
+    if (Date.now() - lastTickAtMs < TICK_WATCHDOG_TIMEOUT_MS) return;
+    // Treat this attempt as handled regardless of outcome, so a
+    // persistently broken IPC channel retries at this same cadence instead
+    // of spamming the error banner every check.
+    lastTickAtMs = Date.now();
+    void (async () => {
+      try {
+        const state = await getState();
+        lastArmed = armedFrom(state.reminders);
+        lastSnapshot = state.reminders;
+        lastNowMs = state.nowMs;
+        if (state.pause !== pauseReason) {
+          pauseReason = state.pause;
+          homeView.setPause(pauseReason);
+        }
+        renderTimerRow();
+      } catch (e) {
+        reportError("Reconnecting after a stalled tick stream", e);
+      }
+    })();
+  }, TICK_WATCHDOG_CHECK_INTERVAL_MS);
 
   await onReminderDue((payload) => {
     void (async () => {
@@ -502,4 +599,4 @@ window.addEventListener("DOMContentLoaded", async () => {
       // Notify-style: Rust already showed the OS toast: nothing else to do.
     })().catch((e) => reportError("Handling reminder", e));
   });
-});
+}

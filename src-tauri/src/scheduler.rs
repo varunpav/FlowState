@@ -230,6 +230,13 @@ pub fn is_paused(idle_seconds: u64, pause_threshold_seconds: u64) -> bool {
     idle_seconds >= pause_threshold_seconds
 }
 
+/// A minimized window still reports `is_visible() == true` on Windows even
+/// though its WebView2 is frozen exactly like a hidden one — so both must
+/// gate the same way. Pure so it's testable without a real window handle.
+pub fn should_emit_tick(visible: bool, minimized: bool) -> bool {
+    visible && !minimized
+}
+
 pub enum StepOutcome {
     Unchanged,
     Ticked(i64),
@@ -376,11 +383,60 @@ pub fn advance_tick(inner: &mut SchedulerInner, now: i64, idle: u64) -> TickResu
 pub fn spawn_ticker<R: Runtime>(app: AppHandle<R>) {
     tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(1));
+        // Default Burst behavior replays one tick per elapsed second after a
+        // stall — a lid-close overnight would otherwise queue tens of
+        // thousands of `tick` emits into the (possibly now-visible) webview
+        // in a tight loop, each costing real render time and making the UI
+        // look hung for minutes while it drains. Delay collapses that into a
+        // single tick carrying the full elapsed delta (advance_tick's
+        // sleep-gap clamp still sees it) and resumes at 1Hz from there.
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             interval.tick().await;
             tick(&app);
         }
     });
+}
+
+/// (visible, minimized) — kept as a pair rather than pre-combined so the
+/// combining logic itself stays in the pure, tested `should_emit_tick`.
+fn window_visibility<R: Runtime>(app: &AppHandle<R>) -> (bool, bool) {
+    match app.get_webview_window("main") {
+        Some(w) => (w.is_visible().unwrap_or(false), w.is_minimized().unwrap_or(false)),
+        None => (false, false),
+    }
+}
+
+fn tick_payload(reminders: &[Reminder; 4], active: Option<ReminderKind>, pause: Option<PauseReason>, now: i64, idle: u64) -> TickPayload {
+    TickPayload {
+        now_ms: now,
+        idle_seconds: idle,
+        reminders: reminders
+            .iter()
+            .map(|r| ReminderSnapshot {
+                kind: r.kind,
+                remaining_ms: r.remaining_ms,
+            })
+            .collect(),
+        active_kind: active,
+        pause,
+    }
+}
+
+/// Repaints the frontend from current state without advancing anything —
+/// called right after the window becomes visible again (tray restore, a
+/// promoted takeover) so it shows the live countdown immediately instead of
+/// waiting up to 1s for the next real tick, since ticks themselves are now
+/// gated on visibility (see `should_emit_tick`).
+pub fn emit_state<R: Runtime>(app: &AppHandle<R>) {
+    let state = app.state::<SchedulerState>();
+    let now = now_ms();
+    let idle = idle_seconds();
+    let (reminders, active, pause) = {
+        let guard = state.inner.lock().unwrap();
+        (guard.reminders, guard.active, guard.pause)
+    };
+    let _ = app.emit("tick", tick_payload(&reminders, active, pause, now, idle));
 }
 
 fn tick<R: Runtime>(app: &AppHandle<R>) {
@@ -394,22 +450,16 @@ fn tick<R: Runtime>(app: &AppHandle<R>) {
         (guard.reminders, guard.active, guard.pause, result)
     }; // guard dropped here — window/notification calls below must never happen while holding the lock
 
-    let _ = app.emit(
-        "tick",
-        TickPayload {
-            now_ms: now,
-            idle_seconds: idle,
-            reminders: reminders_snapshot
-                .iter()
-                .map(|r| ReminderSnapshot {
-                    kind: r.kind,
-                    remaining_ms: r.remaining_ms,
-                })
-                .collect(),
-            active_kind: active,
-            pause,
-        },
-    );
+    // A hidden/minimized WebView2 gets throttled or fully frozen (see this
+    // module's docstring) — posting an event into it every second regardless
+    // burns CPU forever for nothing ever rendered, and is exactly what
+    // produced the multi-day-idle wedge this gate exists to prevent.
+    // Notifications/takeovers below stay unconditional; only the render
+    // event is skipped.
+    let (visible, minimized) = window_visibility(app);
+    if should_emit_tick(visible, minimized) {
+        let _ = app.emit("tick", tick_payload(&reminders_snapshot, active, pause, now, idle));
+    }
 
     for (kind, style) in &result.due_now {
         if *style == AlertStyle::Notify {
@@ -462,6 +512,10 @@ fn perform_takeover<R: Runtime>(app: &AppHandle<R>) {
         let _ = window.set_focus();
         let _ = window.request_user_attention(Some(UserAttentionType::Critical));
     }
+    // The window may have just gone from hidden/minimized (tick emit gated
+    // off) to visible — repaint immediately rather than waiting up to 1s for
+    // the next real tick, or the takeover would briefly show a stale countdown.
+    emit_state(app);
 }
 
 /// Shared by both confirm and snooze — the window-restore mechanics are
@@ -722,6 +776,38 @@ mod tests {
         });
         advance_tick(&mut inner, 6 * 60 * 60 * 1_000, 0);
         assert_eq!(inner.pause, Some(PauseReason::Manual));
+    }
+
+    #[test]
+    fn should_emit_tick_only_when_truly_visible() {
+        assert!(should_emit_tick(true, false));
+        assert!(!should_emit_tick(false, false)); // hidden (tray)
+        assert!(!should_emit_tick(true, true)); // minimized — Windows still reports "visible"
+        assert!(!should_emit_tick(false, true));
+    }
+
+    #[test]
+    fn a_catch_up_volley_after_a_long_stall_applies_no_decrement_across_repeated_advances() {
+        // Simulates MissedTickBehavior::Delay's single carried-delta tick
+        // (unlike Burst, which would call advance_tick once per elapsed
+        // second) — but even if several calls landed in a tight loop, none
+        // beyond the first sleep-detecting one should decrement anything,
+        // since the scheduler is paused immediately.
+        let mut inner = inner_with(|inner| {
+            reminder_mut(inner, ReminderKind::Hydration).remaining_ms = Some(10_000);
+            inner.last_tick_ms = 0;
+        });
+        let first = advance_tick(&mut inner, 6 * 60 * 60 * 1_000, 0);
+        assert_eq!(inner.pause, Some(PauseReason::System));
+        assert!(first.due_now.is_empty());
+
+        // A few more ticks landing right after, still within the same
+        // second in real terms — pause holds them off entirely.
+        for i in 1..=3 {
+            let t = advance_tick(&mut inner, 6 * 60 * 60 * 1_000 + i, 0);
+            assert!(t.due_now.is_empty());
+        }
+        assert_eq!(reminder_mut(&mut inner, ReminderKind::Hydration).remaining_ms, Some(10_000));
     }
 
     #[test]
