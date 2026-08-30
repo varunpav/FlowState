@@ -4,6 +4,7 @@ import { cvSelftest } from "../cv";
 import { relativeDayLabel } from "../core/format";
 import { parseSettings, type Settings } from "../core/settings";
 import { addDays } from "../core/waterLog";
+import { clearStartupApprovalBlock } from "../ipc";
 import { saveSettings } from "../settingsStore";
 import { mountPomodoroCard, mountReminderCard } from "./reminderCard";
 import { createSwitch } from "./switch";
@@ -165,11 +166,22 @@ export function initSettingsPanel(
   async function applyAutostart(desired: boolean): Promise<void> {
     try {
       const actual = await isEnabled();
-      if (desired === actual) return;
+      if (desired !== actual) {
+        if (desired) {
+          await enable();
+        } else {
+          await disable();
+        }
+      }
+      // Deliberately outside the `desired !== actual` branch above: Windows
+      // can independently block the Run key via Task Manager's Startup apps
+      // toggle, and `enable()` itself has a real bug on Windows where it
+      // writes a value Windows reads as blocked (see ipc.ts's
+      // clearStartupApprovalBlock docstring) — `isEnabled()` doesn't detect
+      // either case, so it would otherwise skip clearing this via the
+      // fast-path above every time the switch already reads "on".
       if (desired) {
-        await enable();
-      } else {
-        await disable();
+        await clearStartupApprovalBlock();
       }
     } catch (err) {
       console.error("Failed to update Start with Windows:", err);

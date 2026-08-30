@@ -1,3 +1,4 @@
+mod autostart;
 mod cv;
 mod idle;
 mod scheduler;
@@ -151,7 +152,8 @@ pub fn run() {
             release_takeover,
             cv::cv_start,
             cv::cv_stop,
-            cv::cv_selftest
+            cv::cv_selftest,
+            autostart::clear_startup_approval_block
         ])
         .setup(|app| {
             #[cfg(desktop)]

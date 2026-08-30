@@ -14,9 +14,11 @@ vi.mock("../audio/chime", () => ({
   createChime: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), startOnce: vi.fn(), setVolume: vi.fn(), unlock: vi.fn() })),
 }));
 vi.mock("../cv", () => ({ cvSelftest: vi.fn() }));
+vi.mock("../ipc", () => ({ clearStartupApprovalBlock: vi.fn().mockResolvedValue(undefined) }));
 
-import { disable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { cvSelftest } from "../cv";
+import { clearStartupApprovalBlock } from "../ipc";
 import { saveSettings } from "../settingsStore";
 
 /** Real DOM elements, not queried from index.html — initSettingsPanel takes an explicit elements bag, so a fixture just builds one directly. */
@@ -167,6 +169,35 @@ describe("initSettingsPanel — Start with Windows autostart", () => {
     expect(savedSnapshots[0]?.startWithWindows).toBe(false);
     expect(onSettingsChanged).toHaveBeenCalled();
     expect(el.statusEl.textContent).toBe("Failed to update Start with Windows");
+  });
+
+  it("clears a Windows startup-approval block whenever the switch turns on, even if the OS already reports it enabled", async () => {
+    // isEnabled() already true — e.g. auto-launch's own buggy heuristic
+    // reads the bad StartupApproved value as fine — so the desired===actual
+    // fast path in applyAutostart would otherwise skip this entirely.
+    vi.mocked(isEnabled).mockResolvedValue(false);
+    const { el } = fixture();
+    await flush();
+    const switchEl = el.startWithWindowsContainerEl.querySelector<HTMLButtonElement>("button")!;
+
+    switchEl.click(); // off -> on
+    await flush();
+
+    expect(enable).toHaveBeenCalled();
+    expect(clearStartupApprovalBlock).toHaveBeenCalled();
+  });
+
+  it("does not clear the startup-approval block when the switch turns off", async () => {
+    vi.mocked(isEnabled).mockResolvedValue(true);
+    const { el } = fixture();
+    await flush();
+    const switchEl = el.startWithWindowsContainerEl.querySelector<HTMLButtonElement>("button")!;
+
+    switchEl.click(); // on -> off
+    await flush();
+
+    expect(disable).toHaveBeenCalled();
+    expect(clearStartupApprovalBlock).not.toHaveBeenCalled();
   });
 });
 

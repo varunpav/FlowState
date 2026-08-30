@@ -68,6 +68,19 @@ export function releaseTakeover(): Promise<void> {
   return invoke("release_takeover");
 }
 
+/**
+ * Works around a real bug in the `auto-launch` crate underlying
+ * `tauri-plugin-autostart` on Windows: its `enable()` writes a value into
+ * `StartupApproved\Run` that it believes means "approved" but Windows itself
+ * reads as disabled (see `src-tauri/src/autostart.rs`'s module docstring for
+ * the full story). Best-effort and idempotent — a no-op on non-Windows and
+ * safe to call any time intent is "autostart should be on," not just on a
+ * fresh enable.
+ */
+export function clearStartupApprovalBlock(): Promise<void> {
+  return invoke("clear_startup_approval_block");
+}
+
 export function onTick(handler: (payload: TickPayload) => void): Promise<UnlistenFn> {
   return listen<TickPayload>("tick", (event) => handler(event.payload));
 }

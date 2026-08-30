@@ -34,6 +34,9 @@ windows = { version = "0.62", features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_System_SystemInformation",
 ] }
+# Pinned to the same 0.10 line auto-launch already pulls in transitively
+# (see src/autostart.rs), so this doesn't add a second copy to the tree.
+winreg = "0.10"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

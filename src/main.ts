@@ -10,6 +10,7 @@ import { isStaleTick } from "./core/tickPolicy";
 import { timerRowModel } from "./core/timerRow";
 import { dayKeyOf, entryOn, logWater, removeWater } from "./core/waterLog";
 import {
+  clearStartupApprovalBlock,
   getState,
   onReminderDue,
   onTick,
@@ -133,6 +134,16 @@ async function boot() {
   }
 
   const settings = await loadSettings();
+
+  // Self-heals an install already wedged by the Windows autostart bug (see
+  // ipc.ts's clearStartupApprovalBlock docstring) without requiring the user
+  // to ever revisit Settings — if they've asked for autostart, every launch
+  // re-confirms Windows isn't silently blocking it. Best-effort: a failure
+  // here doesn't affect anything else about startup.
+  if (settings.startWithWindows) {
+    void clearStartupApprovalBlock().catch((e) => reportError("Confirming Windows startup approval", e));
+  }
+
   let pomodoroState = await loadPomodoroState();
   let dailyLog = await loadLog();
   let todayKey = dayKeyOf(Date.now(), localTzOffsetMinutes());
