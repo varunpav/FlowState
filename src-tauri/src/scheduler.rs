@@ -38,10 +38,21 @@
 use crate::idle::idle_seconds;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, Runtime, UserAttentionType};
 use tauri_plugin_notification::NotificationExt;
+
+/// The guarded state at every production call site here is plain data with
+/// no invariant a panic mid-update could leave unsoundly half-written — so
+/// recovering the inner value on a poisoned lock is strictly better than
+/// letting one transient panic in any thread permanently kill every future
+/// command and the ticker itself (a poisoned std Mutex panics on every
+/// subsequent `.lock()` forever, which is exactly the class of "wedged
+/// forever, no recovery" failure this whole module exists to avoid).
+pub fn lock_recover<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 const HOLD_MS: i64 = 3000;
 
@@ -217,11 +228,18 @@ pub struct ReminderRemainingEntry {
 /// Wall-clock epoch millis, deliberately not `Instant`/`performance.now()` —
 /// both are QPC-based on Windows and advance through system suspend. Also
 /// used to compute the real elapsed delta between ticks (see module docs).
+///
+/// Degrades to 0 rather than panicking if the system clock reads before the
+/// Unix epoch (a dead CMOS battery, a bad manual clock set) — this runs once
+/// a second from the ticker, so panicking here would crash the whole app on
+/// a clock problem. Returning 0 makes `advance_tick`'s elapsed-time
+/// calculation clamp to no decrement, which just stalls the countdown until
+/// the clock is sane again — the correct conservative behavior.
 pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system clock is set before the unix epoch")
-        .as_millis() as i64
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default()
 }
 
 /// Pure so it's unit-testable without a tokio runtime or app handle. Mirrors
@@ -235,6 +253,28 @@ pub fn is_paused(idle_seconds: u64, pause_threshold_seconds: u64) -> bool {
 /// gate the same way. Pure so it's testable without a real window handle.
 pub fn should_emit_tick(visible: bool, minimized: bool) -> bool {
     visible && !minimized
+}
+
+/// Mirrors `core/settings.ts`'s `parseIdlePause` bounds (`min: 5, max: 3600`)
+/// exactly. TS already enforces this on every path that reaches the
+/// `set_pause_threshold_seconds` command today, but Rust must not depend on
+/// that holding forever — an unvalidated 0 here would make `is_paused`
+/// always true, freezing every reminder permanently with no way back, which
+/// is the exact class of bug this whole module exists to prevent.
+pub const MIN_PAUSE_THRESHOLD_SECONDS: u64 = 5;
+pub const MAX_PAUSE_THRESHOLD_SECONDS: u64 = 3600;
+
+pub fn clamp_pause_threshold(seconds: u64) -> u64 {
+    seconds.clamp(MIN_PAUSE_THRESHOLD_SECONDS, MAX_PAUSE_THRESHOLD_SECONDS)
+}
+
+/// Lower bound only, deliberately — `core/settings.ts`'s `intervalMs` has a
+/// `min` but no `max`, so a legitimately long-configured interval must pass
+/// through unchanged. Only guards against a non-positive value, which would
+/// otherwise fire a reminder instantly (0) or leave it permanently unable to
+/// ever reach zero (a negative that only grows more negative).
+pub fn sanitize_remaining_ms(ms: Option<i64>) -> Option<i64> {
+    ms.map(|v| v.max(1))
 }
 
 pub enum StepOutcome {
@@ -271,7 +311,8 @@ pub fn may_promote(active: Option<ReminderKind>, queue_len: usize, now_ms: i64, 
 /// until release, which is exactly the pre-arm invariant requirement 10
 /// depends on.
 pub fn set_remaining(state: &SchedulerState, kind: ReminderKind, ms: Option<i64>) {
-    let mut guard = state.inner.lock().unwrap();
+    let ms = sanitize_remaining_ms(ms);
+    let mut guard = lock_recover(&state.inner);
     if let Some(r) = guard.reminders.iter_mut().find(|r| r.kind == kind) {
         r.remaining_ms = ms;
     }
@@ -282,12 +323,12 @@ pub fn set_remaining(state: &SchedulerState, kind: ReminderKind, ms: Option<i64>
 /// every tick regardless of pause state, so there's no stale-elapsed gap to
 /// guard against here the way `set_remaining` guards one for a fresh budget.
 pub fn set_pause(state: &SchedulerState, reason: Option<PauseReason>) {
-    let mut guard = state.inner.lock().unwrap();
+    let mut guard = lock_recover(&state.inner);
     guard.pause = reason;
 }
 
 pub fn set_reminder_configs(state: &SchedulerState, configs: &[ReminderConfigInput]) {
-    let mut guard = state.inner.lock().unwrap();
+    let mut guard = lock_recover(&state.inner);
     for cfg in configs {
         if let Some(r) = guard.reminders.iter_mut().find(|r| r.kind == cfg.kind) {
             r.alert_style = cfg.alert_style;
@@ -297,7 +338,7 @@ pub fn set_reminder_configs(state: &SchedulerState, configs: &[ReminderConfigInp
 }
 
 pub fn remaining_entries(state: &SchedulerState) -> Vec<ReminderRemainingEntry> {
-    let guard = state.inner.lock().unwrap();
+    let guard = lock_recover(&state.inner);
     guard
         .reminders
         .iter()
@@ -433,7 +474,7 @@ pub fn emit_state<R: Runtime>(app: &AppHandle<R>) {
     let now = now_ms();
     let idle = idle_seconds();
     let (reminders, active, pause) = {
-        let guard = state.inner.lock().unwrap();
+        let guard = lock_recover(&state.inner);
         (guard.reminders, guard.active, guard.pause)
     };
     let _ = app.emit("tick", tick_payload(&reminders, active, pause, now, idle));
@@ -445,7 +486,7 @@ fn tick<R: Runtime>(app: &AppHandle<R>) {
     let idle = idle_seconds();
 
     let (reminders_snapshot, active, pause, result) = {
-        let mut guard = state.inner.lock().unwrap();
+        let mut guard = lock_recover(&state.inner);
         let result = advance_tick(&mut guard, now, idle);
         (guard.reminders, guard.active, guard.pause, result)
     }; // guard dropped here — window/notification calls below must never happen while holding the lock
@@ -523,7 +564,7 @@ fn perform_takeover<R: Runtime>(app: &AppHandle<R>) {
 /// Idempotent: a no-op unless a takeover is actually active.
 pub fn release_takeover<R: Runtime>(app: &AppHandle<R>, state: &SchedulerState) {
     {
-        let mut guard = state.inner.lock().unwrap();
+        let mut guard = lock_recover(&state.inner);
         if guard.active.is_none() {
             return;
         }
@@ -822,5 +863,50 @@ mod tests {
             reminder_mut(&mut inner, ReminderKind::Hydration).remaining_ms,
             Some(200_000 - (SLEEP_GAP_MS - 1))
         );
+    }
+
+    #[test]
+    fn clamp_pause_threshold_enforces_core_settings_ts_bounds() {
+        // Mirrors core/settings.ts's parseIdlePause: min 5, max 3600.
+        assert_eq!(clamp_pause_threshold(0), MIN_PAUSE_THRESHOLD_SECONDS);
+        assert_eq!(clamp_pause_threshold(4), MIN_PAUSE_THRESHOLD_SECONDS);
+        assert_eq!(clamp_pause_threshold(5), 5);
+        assert_eq!(clamp_pause_threshold(30), 30);
+        assert_eq!(clamp_pause_threshold(3600), 3600);
+        assert_eq!(clamp_pause_threshold(u64::MAX), MAX_PAUSE_THRESHOLD_SECONDS);
+    }
+
+    #[test]
+    fn sanitize_remaining_ms_floors_non_positive_values_and_passes_none_through() {
+        assert_eq!(sanitize_remaining_ms(None), None);
+        assert_eq!(sanitize_remaining_ms(Some(0)), Some(1));
+        assert_eq!(sanitize_remaining_ms(Some(-5_000)), Some(1));
+        // A long but legitimately-configured interval (intervalMs has a min
+        // but deliberately no max in core/settings.ts) must pass through
+        // completely unchanged — this is a lower-bound guard only.
+        let eight_hours_ms = 8 * 60 * 60 * 1_000;
+        assert_eq!(sanitize_remaining_ms(Some(eight_hours_ms)), Some(eight_hours_ms));
+    }
+
+    #[test]
+    fn lock_recover_returns_the_intact_guard_after_a_panic_poisons_the_mutex() {
+        use std::sync::Arc;
+
+        let m = Arc::new(Mutex::new(42));
+        let poisoner = Arc::clone(&m);
+        // Deliberately panic while holding the lock, on another thread, so
+        // the standard library marks the mutex poisoned.
+        let result = std::thread::spawn(move || {
+            let _guard = poisoner.lock().unwrap();
+            panic!("simulated panic while holding the lock");
+        })
+        .join();
+        assert!(result.is_err(), "the spawned thread should have panicked");
+        assert!(m.is_poisoned());
+
+        // A plain .lock().unwrap() would itself panic here — lock_recover
+        // must not, and the data written before the panic must still be there.
+        let guard = lock_recover(&m);
+        assert_eq!(*guard, 42);
     }
 }

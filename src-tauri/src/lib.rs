@@ -4,7 +4,8 @@ mod scheduler;
 
 use cv::CvState;
 use scheduler::{
-    PauseReason, ReminderConfigInput, ReminderKind, ReminderRemainingEntry, ReminderSnapshot, SchedulerState,
+    lock_recover, PauseReason, ReminderConfigInput, ReminderKind, ReminderRemainingEntry, ReminderSnapshot,
+    SchedulerState,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -60,7 +61,7 @@ fn set_reminder_configs<R: Runtime>(
 
 #[tauri::command]
 fn get_state(state: State<SchedulerState>) -> AppStateSnapshot {
-    let guard = state.inner.lock().unwrap();
+    let guard = lock_recover(&state.inner);
     AppStateSnapshot {
         reminders: guard
             .reminders
@@ -79,7 +80,7 @@ fn get_state(state: State<SchedulerState>) -> AppStateSnapshot {
 
 #[tauri::command]
 fn set_pause_threshold_seconds(state: State<SchedulerState>, seconds: u64) {
-    state.inner.lock().unwrap().pause_threshold_seconds = seconds;
+    lock_recover(&state.inner).pause_threshold_seconds = scheduler::clamp_pause_threshold(seconds);
 }
 
 /// Not persisted — see `LEGACY_GLOBAL_PAUSE_KEY`'s docstring. A manual pause
@@ -137,7 +138,6 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_main_window(app);
         }))
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .manage(SchedulerState::default())
@@ -221,8 +221,9 @@ pub fn run() {
                 &[&show_item, &snooze_item, &pause_item, &separator, &quit_item],
             )?;
 
+            let default_icon = app.default_window_icon().ok_or("missing default window icon")?.clone();
             TrayIconBuilder::with_id(TRAY_ID)
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(default_icon)
                 .tooltip("Flow State")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
@@ -241,7 +242,7 @@ pub fn run() {
                     }
                     "pause" => {
                         let state = app.state::<SchedulerState>();
-                        let currently_paused = state.inner.lock().unwrap().pause.is_some();
+                        let currently_paused = lock_recover(&state.inner).pause.is_some();
                         let next = if currently_paused { None } else { Some(PauseReason::Manual) };
                         scheduler::set_pause(&state, next);
                     }

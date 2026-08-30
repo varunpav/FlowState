@@ -17,9 +17,9 @@
 //! of the process boundary.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
@@ -32,6 +32,52 @@ use tokio::process::{Child, Command};
 /// strategy, deliberately deferred — see the plan's "Deferred, still open".
 fn detector_script_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cv/detector.py")
+}
+
+/// A bare `Command::new("python")` searches PATH at spawn time — which on
+/// most Windows installs resolves to the Microsoft Store's app-execution
+/// stub (it lives under a `WindowsApps` directory and exits immediately
+/// without running anything), and more generally trusts whatever binary
+/// happens to be earliest on PATH. Resolving explicitly, once, means a
+/// missing/stub Python is reported with a specific message instead of a
+/// silent no-op, and a later `FLOW_STATE_PYTHON` override always wins.
+fn resolve_python() -> Result<&'static Path, String> {
+    static RESOLVED: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+    RESOLVED
+        .get_or_init(|| {
+            if let Some(over) = std::env::var_os("FLOW_STATE_PYTHON") {
+                let p = PathBuf::from(over);
+                if p.is_absolute() && p.is_file() {
+                    return Ok(p);
+                }
+                return Err(format!("FLOW_STATE_PYTHON is set but does not point to a file: {}", p.display()));
+            }
+
+            let Some(path_var) = std::env::var_os("PATH") else {
+                return Err("No PATH environment variable to search for python".to_string());
+            };
+
+            for dir in std::env::split_paths(&path_var) {
+                // The Store stub lives under a WindowsApps directory and
+                // exits without doing anything when run non-interactively —
+                // worse than "not found", since it looks like success to spawn().
+                if dir.components().any(|c| c.as_os_str().eq_ignore_ascii_case("WindowsApps")) {
+                    continue;
+                }
+                for name in ["python.exe", "python3.exe", "python", "python3"] {
+                    let candidate = dir.join(name);
+                    if candidate.is_file() {
+                        return Ok(candidate);
+                    }
+                }
+            }
+
+            Err("Couldn't find a python executable on PATH. Install Python 3 (see cv/README.md), \
+                 or set the FLOW_STATE_PYTHON environment variable to its full path."
+                .to_string())
+        })
+        .as_deref()
+        .map_err(|e| e.clone())
 }
 
 #[derive(Default)]
@@ -53,13 +99,14 @@ pub struct SelfTestResult {
 #[tauri::command]
 pub async fn cv_start<R: Runtime>(app: AppHandle<R>, state: State<'_, CvState>) -> Result<(), String> {
     {
-        let guard = state.child.lock().unwrap();
+        let guard = crate::scheduler::lock_recover(&state.child);
         if guard.is_some() {
             return Ok(());
         }
     }
 
-    let mut child = Command::new("python")
+    let python = resolve_python()?;
+    let mut child = Command::new(python)
         .arg(detector_script_path())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -69,7 +116,7 @@ pub async fn cv_start<R: Runtime>(app: AppHandle<R>, state: State<'_, CvState>) 
         .map_err(|e| format!("Couldn't start the camera process: {e}"))?;
 
     let stdout = child.stdout.take().ok_or("Camera process started with no stdout pipe")?;
-    *state.child.lock().unwrap() = Some(child);
+    *crate::scheduler::lock_recover(&state.child) = Some(child);
 
     tauri::async_runtime::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
@@ -93,7 +140,7 @@ pub async fn cv_start<R: Runtime>(app: AppHandle<R>, state: State<'_, CvState>) 
 /// `cv_start` is the backstop if the signal itself doesn't land.
 #[tauri::command]
 pub fn cv_stop(state: State<'_, CvState>) {
-    if let Some(mut child) = state.child.lock().unwrap().take() {
+    if let Some(mut child) = crate::scheduler::lock_recover(&state.child).take() {
         let _ = child.start_kill();
     }
 }
@@ -105,7 +152,8 @@ pub fn cv_stop(state: State<'_, CvState>) {
 /// open past its own process's lifetime.
 #[tauri::command]
 pub async fn cv_selftest() -> Result<SelfTestResult, String> {
-    let output = Command::new("python")
+    let python = resolve_python()?;
+    let output = Command::new(python)
         .arg(detector_script_path())
         .arg("--selftest")
         .stdin(Stdio::null())
