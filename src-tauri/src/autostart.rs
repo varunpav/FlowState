@@ -40,7 +40,6 @@ const STARTUP_APPROVED_RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersi
 #[cfg(target_os = "windows")]
 #[tauri::command]
 pub fn clear_startup_approval_block<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
-    use tauri::Manager;
     use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE};
     use winreg::RegKey;
 
