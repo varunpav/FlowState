@@ -115,7 +115,9 @@ function buildRing(
   };
 }
 
-const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
+// Two letters, not one — "T" alone doesn't say Tuesday or Thursday, "S"
+// doesn't say Saturday or Sunday. Indexed by Date.getUTCDay() (0 = Sunday).
+const DAY_LETTERS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 const DAYS_IN_BAR_ROW = 7;
 
