@@ -118,7 +118,9 @@ export function initSettingsPanel(
       cv: { enabled: cvSwitch.get() },
       snoozeMs: Number(el.snoozeInput.value) * 60_000,
       maxSnoozes: Number(el.maxSnoozesInput.value),
-      volume: Number(el.volumeInput.value),
+      // The slider is a 0-100 percent scale for the user (0 = mute, 100 =
+      // max); Settings/chime.ts keep the 0-1 gain scale they've always used.
+      volume: Number(el.volumeInput.value) / 100,
       startWithWindows: startWithWindowsSwitch.get(),
     };
   }
@@ -287,7 +289,7 @@ export function initSettingsPanel(
     renderWaterDayStepper();
     el.snoozeInput.value = String(settings.snoozeMs / 60_000);
     el.maxSnoozesInput.value = String(settings.maxSnoozes);
-    el.volumeInput.value = String(settings.volume);
+    el.volumeInput.value = String(Math.round(settings.volume * 100));
     idlePauseSwitch.set(settings.idlePause.enabled);
     el.idlePauseThresholdInput.value = String(settings.idlePause.thresholdSeconds);
     syncIdlePauseDisabled();
@@ -345,11 +347,11 @@ export function initSettingsPanel(
   el.idlePauseThresholdInput.addEventListener("change", () => void commit());
 
   // Live audible feedback while dragging, without committing per pixel.
-  el.volumeInput.addEventListener("input", () => chime.setVolume(Number(el.volumeInput.value)));
+  el.volumeInput.addEventListener("input", () => chime.setVolume(Number(el.volumeInput.value) / 100));
   el.volumeInput.addEventListener("change", () => void commit());
 
   el.testSoundBtn.addEventListener("click", () => {
-    chime.setVolume(Number(el.volumeInput.value));
+    chime.setVolume(Number(el.volumeInput.value) / 100);
     chime.startOnce();
   });
 
