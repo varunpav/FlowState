@@ -1077,6 +1077,21 @@ details[open] > summary::after {
   background-color: var(--tan-surface-sunken);
 }
 
+/* A native range input still has the UA's own padding/border inside its box
+   even with a custom background-color set — that sunken background paints
+   the full width, but the actual track/thumb travel is inset within it, so
+   the thumb visibly stops short of the colored bar's edges at both ends
+   (looks broken even though the underlying value correctly reaches 0/100).
+   Mirrors #hydration-interval-slider's reset: no box of its own, just the
+   native track colored via accent-color, so the thumb travels genuinely
+   edge-to-edge. */
+#settings-volume {
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: var(--blue);
+}
+
 .settings-field-checkbox {
   flex-direction: row;
   align-items: center;
