@@ -176,13 +176,19 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
   const ring = buildRing(el.ringContainerEl);
   const bars = buildBars(el.barsContainerEl);
 
+  // A proper flame silhouette (Heroicons "fire", MIT-licensed) rather than
+  // the old hand-drawn blob — an inner highlight cutout via the evenodd fill
+  // rule instead of one flat solid shape, so it actually reads as fire at
+  // the small size this renders at next to the streak count.
   const streakIcon = document.createElementNS(SVG_NS, "svg");
   streakIcon.setAttribute("viewBox", "0 0 24 24");
   streakIcon.setAttribute("fill", "currentColor");
   const streakPath = document.createElementNS(SVG_NS, "path");
+  streakPath.setAttribute("fill-rule", "evenodd");
+  streakPath.setAttribute("clip-rule", "evenodd");
   streakPath.setAttribute(
     "d",
-    "M12 2c1 3-3 4.5-3 8a3 3 0 0 0 6 0c1.5 1 2 2.8 2 4.2A5.2 5.2 0 0 1 6.8 14C6.8 8 12 6 12 2Z",
+    "M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.176 7.547 7.547 0 0 1-1.705-1.715.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 0 1 1.925-3.545 3.75 3.75 0 0 1 3.255 3.717Z",
   );
   streakIcon.append(streakPath);
   const streakTextEl = document.createElement("span");
