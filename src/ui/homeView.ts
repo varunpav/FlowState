@@ -1,6 +1,6 @@
 import { REMINDER_LABELS } from "../core/reminders";
 import { formatClockTime, formatCountdown } from "../core/format";
-import type { TimerRowModel } from "../core/timerRow";
+import type { HydrationHeroState, TimerRowModel } from "../core/timerRow";
 import { entryOn, goalStreak, lastNDays, monthToDate, yearToDate, type DailyLog } from "../core/waterLog";
 import type { PauseReason } from "../ipc";
 import { mountWaterEntry, type WaterEntryHandle } from "./waterEntry";
@@ -18,6 +18,8 @@ function hydrationHeroLabel(pauseReason: PauseReason | null): string {
 }
 
 export interface HomeViewElements {
+  /** The whole home view — carries the `home-running` class that strips the page back to just the countdown. */
+  containerEl: HTMLElement;
   heroEl: HTMLElement;
   heroLabelEl: HTMLElement;
   heroCountdownEl: HTMLElement;
@@ -32,6 +34,8 @@ export interface HomeViewElements {
   intervalSliderValueEl: HTMLElement;
   startTimerBtn: HTMLButtonElement;
   pauseBtn: HTMLButtonElement;
+  /** The collapsible "Timer & Stats" disclosure holding the interval slider and the water card — see renderTimers for when it opens/closes on its own. */
+  menuEl: HTMLDetailsElement;
 }
 
 export interface HomeViewOptions {
@@ -198,6 +202,8 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
     options.onWaterLogged(oz, Date.now()),
   );
   let pauseReason: PauseReason | null = null;
+  /** Previous hero state, so the menu below reacts to running/not-running TRANSITIONS rather than being re-asserted on every tick. `null` until the first render. */
+  let lastHeroState: HydrationHeroState | null = null;
 
   el.intervalSliderEl.addEventListener("change", () => {
     const minutes = Number(el.intervalSliderEl.value);
@@ -232,6 +238,26 @@ export function initHomeView(el: HomeViewElements, options: HomeViewOptions): Ho
         el.heroLabelEl.textContent = hydrationHeroLabel(pauseReason);
         el.heroCountdownEl.textContent = formatCountdown(hero.remainingMs as number);
       }
+
+      // Collapse the menu once a timer is actually running (a running home
+      // page should be just the countdown) and reopen it when nothing is —
+      // but only on the TRANSITION, never on every render. This runs ~1/sec
+      // off the tick, so re-asserting `open` each time would slam the menu
+      // shut a second after the user manually opened it mid-run. Edge-
+      // triggering also leaves idle<->off alone (both non-running), and the
+      // `null` seed makes the very first render set the right state — so a
+      // restart that restores a running budget comes up already collapsed.
+      // Pausing is deliberately not a transition: hero.state stays
+      // "running" while paused (only the label changes), so the menu stays
+      // exactly as the user left it.
+      const isRunning = hero.state === "running";
+      // Unlike the menu below, this is a plain level — there's no user
+      // interaction to fight, so it can just track the current state.
+      el.containerEl.classList.toggle("home-running", isRunning);
+      if (lastHeroState === null || isRunning !== (lastHeroState === "running")) {
+        el.menuEl.open = !isRunning;
+      }
+      lastHeroState = hero.state;
 
       // Start/Reset reflects whether ANYTHING is armed, not just hydration —
       // otherwise switching hydration off would leave the button reading

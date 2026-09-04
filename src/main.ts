@@ -257,6 +257,7 @@ async function boot() {
 
   const homeView = initHomeView(
     {
+      containerEl: document.querySelector("#home-view")!,
       heroEl: document.querySelector("#hero")!,
       heroLabelEl: document.querySelector("#hero-label")!,
       heroCountdownEl: document.querySelector("#hero-countdown")!,
@@ -271,6 +272,7 @@ async function boot() {
       intervalSliderValueEl: document.querySelector("#hydration-interval-value")!,
       startTimerBtn: document.querySelector("#start-timer")!,
       pauseBtn: document.querySelector("#pause-toggle")!,
+      menuEl: document.querySelector("#home-menu")!,
     },
     {
       bottleOz: settings.water.bottleOz,

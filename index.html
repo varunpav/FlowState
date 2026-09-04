@@ -59,37 +59,45 @@
       </div>
       <div class="reminder-chips" id="reminder-chips"></div>
 
-      <div class="card interval-card">
-        <div class="row">
-          <input
-            id="hydration-interval-slider"
-            type="range"
-            min="5"
-            max="240"
-            step="5"
-            value="120"
-            aria-label="Hydration interval in minutes"
-          />
-          <span id="hydration-interval-value" class="interval-slider-value">120 min</span>
-        </div>
-        <div class="row">
-          <button id="start-timer" type="button" class="takeover-confirm">Start timer</button>
-          <button id="pause-toggle" type="button" class="pause-btn">Pause</button>
-        </div>
+      <!-- Live controls for a running timer — deliberately NOT inside the menu
+           below, so pausing or resetting never costs a menu open. -->
+      <div class="row home-controls">
+        <button id="start-timer" type="button" class="takeover-confirm">Start timer</button>
+        <button id="pause-toggle" type="button" class="pause-btn">Pause</button>
       </div>
 
-      <div class="card water-card">
-        <div class="water-card-row">
-          <div class="ring-container" id="water-ring"></div>
-          <div class="water-stats">
-            <div class="bars-container" id="water-bars"></div>
-            <p class="water-streak" id="water-streak">Streak 0 days</p>
+      <details class="settings-section home-menu" id="home-menu">
+        <summary>Timer &amp; stats</summary>
+        <div class="home-menu-body">
+          <div class="interval-card">
+            <div class="row">
+              <input
+                id="hydration-interval-slider"
+                type="range"
+                min="5"
+                max="240"
+                step="5"
+                value="120"
+                aria-label="Hydration interval in minutes"
+              />
+              <span id="hydration-interval-value" class="interval-slider-value">120 min</span>
+            </div>
+          </div>
+
+          <div class="water-card">
+            <div class="water-card-row">
+              <div class="ring-container" id="water-ring"></div>
+              <div class="water-stats">
+                <div class="bars-container" id="water-bars"></div>
+                <p class="water-streak" id="water-streak">Streak 0 days</p>
+              </div>
+            </div>
+            <div id="home-water-entry"></div>
+            <p class="water-range-stat" id="water-month-stats"></p>
+            <p class="water-range-stat" id="water-year-stats"></p>
           </div>
         </div>
-        <div id="home-water-entry"></div>
-        <p class="water-range-stat" id="water-month-stats"></p>
-        <p class="water-range-stat" id="water-year-stats"></p>
-      </div>
+      </details>
     </main>
 
     <section class="history-view" id="history-view" hidden>

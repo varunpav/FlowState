@@ -519,12 +519,99 @@ h1 {
   gap: 0.4em;
 }
 
-.interval-card .row + .row {
-  margin-top: 0.1em;
+/* Start/Reset + Pause live on the home page itself rather than inside the
+   Timer & Stats menu — they're live controls for a running timer, so needing
+   to open a menu to reach them would defeat the collapse. */
+.home-controls {
+  width: 100%;
+  max-width: 26em;
 }
 
-.interval-card .row button {
+.home-controls button {
   flex: 1;
+}
+
+/* The home page's one collapsible menu: everything that's setup-time (the
+   interval slider) or at-a-glance (the water card), so a running timer's
+   home page is just the countdown. Borrows .settings-section's summary and
+   rotating chevron, but drops its card chrome while closed — collapsed, this
+   should read as a single quiet line of text, not another panel competing
+   with the countdown. The card comes back on [open], where it's actually
+   framing content. */
+.home-menu {
+  width: 100%;
+  max-width: 26em;
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  padding: 0 1em;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.home-menu[open] {
+  background: var(--tan-surface);
+  border-color: var(--tan-border);
+  box-shadow: var(--shadow);
+}
+
+.home-menu summary {
+  justify-content: center;
+  color: var(--ink-soft);
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+/* Sits right beside the label rather than pinned to the far edge — the
+   summary is centered here, not a full-width settings row. */
+.home-menu summary::after {
+  margin-left: 0.3em;
+}
+
+.home-menu-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9em;
+  padding: 0 0.2em 0.9em;
+}
+
+/* Running: strip the page down to the countdown. The wordmark, the buttons'
+   emphasis and the page's top-anchored layout are all setup-time framing —
+   once a timer is actually going, the only thing worth any visual weight is
+   the number. */
+.home-running {
+  min-height: 88vh;
+  padding-top: 0;
+}
+
+.home-running .brand {
+  display: none;
+}
+
+.home-running .hero-countdown {
+  font-size: 3.4em;
+}
+
+.home-running .home-controls button {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--ink-soft);
+  font-size: 0.85em;
+}
+
+.home-running .home-controls button:hover {
+  background-color: var(--blue-light);
+  color: var(--blue-dark);
+}
+
+/* Paused has to stay legible as a state, not just quietly ghost out with
+   everything else — the hero label alone is too easy to miss. */
+.home-running .home-controls .pause-btn-active {
+  background-color: var(--blue);
+  border-color: var(--blue-dark);
+  color: var(--tan-surface);
 }
 
 .interval-slider-value {

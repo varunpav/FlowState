@@ -6,6 +6,7 @@ import { initHomeView, type HomeViewElements, type HomeViewOptions } from "./hom
 
 function buildElements(): HomeViewElements {
   return {
+    containerEl: document.createElement("main"),
     heroEl: document.createElement("div"),
     heroLabelEl: document.createElement("p"),
     heroCountdownEl: document.createElement("p"),
@@ -20,6 +21,7 @@ function buildElements(): HomeViewElements {
     intervalSliderValueEl: document.createElement("span"),
     startTimerBtn: document.createElement("button"),
     pauseBtn: document.createElement("button"),
+    menuEl: document.createElement("details"),
   };
 }
 
@@ -189,5 +191,71 @@ describe("renderTimers — Pause button visibility", () => {
       NOW_MS,
     );
     expect(el.pauseBtn.hidden).toBe(false);
+  });
+});
+
+describe("renderTimers — Timer & Stats menu", () => {
+  const running = model({ hero: { state: "running", remainingMs: 90_000 } });
+  const idle = model({ hero: { state: "idle", remainingMs: null } });
+
+  it("opens on the first render when nothing is running", () => {
+    const { el, view } = fixture();
+    view.renderTimers(idle, NOW_MS);
+    expect(el.menuEl.open).toBe(true);
+  });
+
+  it("comes up already collapsed when the very first render is a running timer (e.g. a restored budget after restart)", () => {
+    const { el, view } = fixture();
+    view.renderTimers(running, NOW_MS);
+    expect(el.menuEl.open).toBe(false);
+  });
+
+  it("collapses when a timer starts and reopens once it stops", () => {
+    const { el, view } = fixture();
+
+    view.renderTimers(idle, NOW_MS);
+    expect(el.menuEl.open).toBe(true);
+
+    view.renderTimers(running, NOW_MS); // Start
+    expect(el.menuEl.open).toBe(false);
+
+    view.renderTimers(idle, NOW_MS); // Reset
+    expect(el.menuEl.open).toBe(true);
+  });
+
+  it("leaves a manually-opened menu alone while the timer keeps running", () => {
+    // renderTimers runs ~1/sec off the tick — re-asserting `open` on every
+    // render would slam the menu shut a second after the user opened it.
+    const { el, view } = fixture();
+    view.renderTimers(running, NOW_MS);
+    expect(el.menuEl.open).toBe(false);
+
+    el.menuEl.open = true; // user clicks the summary mid-run
+    for (let i = 0; i < 5; i++) view.renderTimers(running, NOW_MS);
+
+    expect(el.menuEl.open).toBe(true);
+  });
+
+  it("marks the view as running so the CSS can strip it back to the countdown, and unmarks it when it stops", () => {
+    const { el, view } = fixture();
+
+    view.renderTimers(idle, NOW_MS);
+    expect(el.containerEl.classList.contains("home-running")).toBe(false);
+
+    view.renderTimers(running, NOW_MS);
+    expect(el.containerEl.classList.contains("home-running")).toBe(true);
+
+    view.renderTimers(idle, NOW_MS);
+    expect(el.containerEl.classList.contains("home-running")).toBe(false);
+  });
+
+  it("does not reopen on an idle->off transition, since neither is running", () => {
+    const { el, view } = fixture();
+    view.renderTimers(idle, NOW_MS);
+    el.menuEl.open = false; // user collapsed it themselves while idle
+
+    view.renderTimers(model({ hero: { state: "off", remainingMs: null } }), NOW_MS);
+
+    expect(el.menuEl.open).toBe(false);
   });
 });
