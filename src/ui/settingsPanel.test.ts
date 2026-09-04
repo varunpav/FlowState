@@ -130,6 +130,20 @@ describe("initSettingsPanel — commit on change", () => {
     expect(onSettingsChanged).toHaveBeenCalledTimes(1);
   });
 
+  it("saves the Pomodoro long-break choice alongside the rest of the settings object", async () => {
+    const { el, onSettingsChanged } = fixture();
+
+    const twentyMin = Array.from(el.remindersContainerEl.querySelectorAll("button")).find(
+      (b) => b.textContent === "20 min",
+    )!;
+    twentyMin.click();
+    await flush();
+
+    expect(savedSnapshots).toHaveLength(1);
+    expect(savedSnapshots[0]?.pomodoro.longBreakMs).toBe(20 * 60_000);
+    expect(onSettingsChanged).toHaveBeenCalledTimes(1);
+  });
+
   it("shows an error and reverts the field instead of saving an invalid value", async () => {
     const { el, settings, onSettingsChanged } = fixture();
     const originalBottleOz = settings.water.bottleOz;

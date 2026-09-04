@@ -5,6 +5,7 @@ import type { PomodoroPhase } from "../core/pomodoro";
 import type { ReminderKind } from "../core/reminders";
 import type { Settings } from "../core/settings";
 import { takeoverCopyFor } from "../core/takeoverCopy";
+import { shouldOfferTurnOff } from "../core/turnOffPolicy";
 import { cvStart, cvStop, onCvError, onCvFrame, onCvReady, onCvVerified } from "../cv";
 import { releaseTakeover, setRemainingMs } from "../ipc";
 import { mountWaterEntry, type WaterEntryHandle } from "./waterEntry";
@@ -20,10 +21,24 @@ export interface TakeoverElements {
   waterEntryContainerEl: HTMLElement;
   confirmRowEl: HTMLElement;
   confirmBtn: HTMLButtonElement;
+  /** Shown instead of `confirmRowEl` only when a Pomodoro *focus* session just ended — lets the user pick the break length instead of a single "Start break" confirm. */
+  breakChoiceRowEl: HTMLElement;
+  shortBreakBtn: HTMLButtonElement;
+  longBreakBtn: HTMLButtonElement;
   skipRowEl: HTMLElement;
   skipBtn: HTMLButtonElement;
   snoozeBtn: HTMLButtonElement;
   snoozeHintEl: HTMLElement;
+  /** The escape hatch that persistently disables the reminder that just fired — see `core/turnOffPolicy.ts` for when it's actually shown. */
+  turnOffRowEl: HTMLElement;
+  turnOffBtn: HTMLButtonElement;
+  // DEBUG — temporary manual-testing aid, hydration-only. Commented out for
+  // now (not deleted) so it's a quick uncomment to bring back for future
+  // testing — see the matching commented-out block in main.ts's
+  // initTakeover(...) call, the click handler + show() visibility toggle
+  // below in this file, and the row in index.html.
+  // debugSnoozeRowEl: HTMLElement;
+  // debugSnoozeBtn: HTMLButtonElement;
 }
 
 export interface Takeover {
@@ -48,6 +63,14 @@ export interface TakeoverCallbacks {
   onWaterLogged: (oz: number, nowMs: number) => void;
   /** The phase that just ended — always the opposite of the current (already-advanced) Pomodoro phase. */
   getPomodoroPhaseJustEnded: () => PomodoroPhase;
+  /**
+   * The "Turn off" button's action — main.ts owns settings persistence and
+   * reconcile, so this just hands it which kind to disable and awaits the
+   * settings/Rust side actually clearing that kind's budget before the
+   * takeover releases (see the click handler below for why the ordering
+   * matters).
+   */
+  onTurnOffReminder: (kind: ReminderKind) => Promise<void>;
 }
 
 /**
@@ -60,9 +83,14 @@ export interface TakeoverCallbacks {
  * `setEnabled(false)` locks its buttons until `core/cvGate.ts`'s
  * `waterEntryUnlocked` says otherwise — which includes a broken camera
  * (`"failed"`), so a webcam problem can never trap the user out of logging
- * a drink. **Skip** dismisses without logging, sharing `confirm()`'s exact
- * release/reset/hide mechanics — the only difference from a normal confirm
- * is that nothing called `onWaterLogged` first.
+ * a drink. **Done** (labeled "Skip" internally — `skipBtn`/`skipRowEl` — a
+ * holdover from when it only ever appeared during CV verification) dismisses
+ * without logging, sharing `confirm()`'s exact release/reset/hide mechanics
+ * — the only difference from a normal confirm is that nothing called
+ * `onWaterLogged` first. Shown unconditionally for hydration (not just
+ * during CV verification) — a plain "I'm not drinking right now" dismiss
+ * that doesn't require snoozing first or reaching for Settings, the way
+ * eyeBreak/standUp's own Done button already does for those kinds.
  */
 export function initTakeover(
   el: TakeoverElements,
@@ -94,6 +122,11 @@ export function initTakeover(
     if (exhausted) el.snoozeHintEl.textContent = "No snoozes left — please confirm.";
   }
 
+  function syncTurnOffAvailability() {
+    el.turnOffRowEl.hidden =
+      activeKind === null || !shouldOfferTurnOff(activeKind, snoozeStateFor(activeKind).snoozeCount);
+  }
+
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Escape" && !el.snoozeBtn.disabled) {
       event.preventDefault();
@@ -112,7 +145,10 @@ export function initTakeover(
     cvStatus = status;
     const showPane = status !== "off";
     el.cvPaneEl.hidden = !showPane;
-    el.skipRowEl.hidden = !showPane;
+    // skipRowEl (labeled "Done") is NOT tied to CV pane visibility — show()
+    // now sets it unconditionally for hydration, on or off. It's just that
+    // while CV is active, the water-entry hide/show a few lines down means
+    // Done is briefly the ONLY dismiss option on screen.
     el.cvPromptEl.textContent = cvPrompt(status);
     el.cvPromptEl.classList.toggle("cv-verified", status === "verified");
     const unlocked = waterEntryUnlocked(status);
@@ -204,12 +240,18 @@ export function initTakeover(
   // hide — the only difference is nothing logged water first.
   el.skipBtn.addEventListener("click", () => void confirm());
 
-  el.snoozeBtn.addEventListener("click", () => {
+  /**
+   * Shared by the real snooze button and the debug 5s shortcut below — the
+   * only difference between them is which `snoozeMs` they pass in. Both go
+   * through the real applySnooze/snoozeStateByKind bookkeeping, so the debug
+   * shortcut genuinely behaves like a (much faster) real snooze: it counts
+   * toward maxSnoozes and correctly reveals hydration's Turn off after one
+   * use, rather than being a parallel path that silently skips both.
+   */
+  function doSnooze(kind: ReminderKind, snoozeMs: number) {
     void (async () => {
-      const kind = activeKind;
-      if (!kind) return;
       const result = applySnooze(snoozeStateFor(kind), Date.now(), {
-        snoozeMs: settings.snoozeMs,
+        snoozeMs,
         maxSnoozes: settings.maxSnoozes,
       });
       if (!result.ok) {
@@ -219,22 +261,89 @@ export function initTakeover(
       snoozeStateByKind[kind] = result.state;
       // Overwrites the pre-armed full interval — snoozing means "not the
       // full interval, just a short grace period."
-      await setRemainingMs(kind, settings.snoozeMs);
+      await setRemainingMs(kind, snoozeMs);
       await releaseTakeover();
       hide();
     })();
+  }
+
+  el.snoozeBtn.addEventListener("click", () => {
+    if (!activeKind) return;
+    doSnooze(activeKind, settings.snoozeMs);
   });
+
+  // DEBUG — temporary manual-testing aid, hydration-only: a fixed 5s snooze
+  // for quickly cycling back to another hydration takeover without waiting
+  // out the real (usually much longer) settings.snoozeMs. Commented out for
+  // now — un-comment together with TakeoverElements' debugSnoozeRowEl/
+  // debugSnoozeBtn above, the show() visibility toggle below, main.ts's
+  // matching element wiring, and index.html's row to bring it back. Runs
+  // through the same doSnooze as the real button above (kept, since Snooze
+  // now depends on it too) purely with a shorter duration — so it
+  // accurately exercises maxSnoozes exhaustion and Turn off's
+  // reveal-after-a-snooze gating, not a separate bypass path.
+  // el.debugSnoozeBtn.addEventListener("click", () => {
+  //   if (activeKind !== "hydration") return;
+  //   doSnooze("hydration", 5_000);
+  // });
+
+  el.turnOffBtn.addEventListener("click", () => {
+    void (async () => {
+      const kind = activeKind;
+      if (!kind) return;
+      // Must land BEFORE releaseTakeover(): Rust's decrement loop is gated
+      // on `active` still being set, so the pre-armed budget stays frozen
+      // as long as the takeover is up. Releasing first would open a window
+      // where that budget starts counting down again before this clears it.
+      await callbacks.onTurnOffReminder(kind);
+      await confirm();
+    })();
+  });
+
+  /**
+   * Overwrites whatever main.ts pre-armed `advancePomodoro`'s `nextBudgetMs`
+   * to (always the short break) with the user's actual choice — same
+   * override-then-release shape as the snooze handler above. Guarded to
+   * `activeKind === "pomodoro"` even though these buttons are only ever
+   * shown for pomodoro, purely so a stray click can't act on the wrong kind.
+   */
+  function takeBreak(ms: number) {
+    void (async () => {
+      if (activeKind !== "pomodoro") return;
+      await setRemainingMs("pomodoro", ms);
+      await confirm();
+    })();
+  }
+  el.shortBreakBtn.addEventListener("click", () => takeBreak(settings.pomodoro.breakMs));
+  el.longBreakBtn.addEventListener("click", () => takeBreak(settings.pomodoro.longBreakMs));
 
   return {
     show(kind: ReminderKind) {
       activeKind = kind;
       syncSnoozeAvailability();
+      syncTurnOffAvailability();
+      // DEBUG — temporary, hydration-only, commented out. See the commented-out debugSnoozeBtn listener above.
+      // el.debugSnoozeRowEl.hidden = kind !== "hydration";
 
-      const copy = takeoverCopyFor(kind, kind === "pomodoro" ? callbacks.getPomodoroPhaseJustEnded() : undefined);
+      // Computed once and reused for both the copy lookup and the
+      // break-choice branch below, rather than calling the callback twice
+      // and risking the two reads disagreeing.
+      const phaseJustEnded = kind === "pomodoro" ? callbacks.getPomodoroPhaseJustEnded() : undefined;
+      const copy = takeoverCopyFor(kind, phaseJustEnded);
       el.titleEl.textContent = copy.title;
+
+      // Only a focus session ending offers a break-length choice — a break
+      // ending goes back to a single focus session, nothing to choose.
+      const showBreakChoice = kind === "pomodoro" && phaseJustEnded === "focus";
+
+      // Done (skipRowEl/skipBtn) is hydration-only, and no longer tied to
+      // CV pane visibility (see setCvStatus) — set unconditionally here so
+      // it's independent of whichever CV branch runs below.
+      el.skipRowEl.hidden = kind !== "hydration";
 
       if (kind === "hydration") {
         el.confirmRowEl.hidden = true;
+        el.breakChoiceRowEl.hidden = true;
         el.waterEntryContainerEl.hidden = false;
         waterEntry = mountWaterEntry(el.waterEntryContainerEl, settings.water.bottleOz, (oz) => {
           callbacks.onWaterLogged(oz, Date.now());
@@ -257,8 +366,16 @@ export function initTakeover(
         } else {
           setCvStatus("off");
         }
+      } else if (showBreakChoice) {
+        el.waterEntryContainerEl.hidden = true;
+        el.confirmRowEl.hidden = true;
+        el.breakChoiceRowEl.hidden = false;
+        el.shortBreakBtn.textContent = `Short break · ${settings.pomodoro.breakMs / 60_000} min`;
+        el.longBreakBtn.textContent = `Long break · ${settings.pomodoro.longBreakMs / 60_000} min`;
+        setCvStatus("off");
       } else {
         el.waterEntryContainerEl.hidden = true;
+        el.breakChoiceRowEl.hidden = true;
         el.confirmRowEl.hidden = false;
         el.confirmBtn.textContent = copy.confirmLabel;
         setCvStatus("off");
@@ -275,13 +392,16 @@ export function initTakeover(
 
       // Focus a native control so Enter/Space work with no extra handling.
       // Hydration normally focuses its first quick-add button; while CV has
-      // water entry locked, Skip is the primary action instead.
+      // water entry locked, Skip is the primary action instead. The
+      // break-choice row focuses Short break as the more common pick.
       const primaryControl =
         kind === "hydration"
           ? waterEntryUnlocked(cvStatus)
             ? el.waterEntryContainerEl.querySelector<HTMLButtonElement>("button")
             : el.skipBtn
-          : el.confirmBtn;
+          : showBreakChoice
+            ? el.shortBreakBtn
+            : el.confirmBtn;
       primaryControl?.focus();
     },
 

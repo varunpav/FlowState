@@ -326,7 +326,7 @@
           </label>
           <div class="row settings-test-row">
             <button id="settings-test-sound" type="button">Test sound</button>
-            <button id="test-alert" type="button">Test alert (10s)</button>
+            <button id="test-alert" type="button">Test alert (5s)</button>
             <button
               id="test-notification"
               type="button"
@@ -356,6 +356,33 @@
         </div>
       </details>
 
+      <!-- DEBUG — temporary manual-testing aid, disabled for now. Un-comment this block
+           together with the matching #debug-trigger-* listeners in main.ts to bring it back.
+      <details class="settings-section">
+        <summary>
+          <span class="settings-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path
+                d="M9 3h6M10 3v6.5L5.5 18a2 2 0 0 0 1.8 3h9.4a2 2 0 0 0 1.8-3L14 9.5V3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path d="M7.5 15h9" stroke-linecap="round" />
+            </svg>
+          </span>
+          Debug
+        </summary>
+        <div class="settings-card-body">
+          <div class="row settings-test-row">
+            <button id="debug-trigger-pomodoro-focus" type="button">Pomodoro focus in 5s</button>
+            <button id="debug-trigger-pomodoro-break" type="button">Pomodoro break in 5s</button>
+            <button id="debug-trigger-standup" type="button">Stand up in 5s</button>
+            <button id="debug-trigger-eyebreak" type="button">Eye break in 5s</button>
+          </div>
+        </div>
+      </details>
+      -->
+
       <p class="settings-status" id="settings-status" hidden></p>
       </section>
     </div>
@@ -379,13 +406,26 @@
         <div class="row" id="takeover-confirm-row">
           <button id="takeover-confirm" type="button" class="takeover-confirm">Done</button>
         </div>
+        <div class="row" id="takeover-break-choice-row" hidden>
+          <button id="takeover-short-break" type="button" class="takeover-confirm">Short break</button>
+          <button id="takeover-long-break" type="button" class="takeover-confirm">Long break</button>
+        </div>
         <div class="row" id="takeover-skip-row" hidden>
-          <button id="takeover-skip" type="button" class="ghost-btn">Skip</button>
+          <button id="takeover-skip" type="button" class="ghost-btn">Done</button>
         </div>
         <div class="row">
           <button id="takeover-snooze" type="button" class="takeover-snooze">Snooze 15 min</button>
         </div>
         <p class="takeover-hint" id="takeover-snooze-hint" hidden></p>
+        <!-- DEBUG — temporary, disabled for now. Un-comment together with the
+             matching commented-out wiring in takeover.ts/main.ts to bring it back.
+        <div class="row" id="takeover-debug-snooze-row" hidden>
+          <button id="takeover-debug-snooze" type="button" class="ghost-btn">Snooze 5s (debug)</button>
+        </div>
+        -->
+        <div class="row" id="takeover-turn-off-row" hidden>
+          <button id="takeover-turn-off" type="button" class="ghost-btn">Turn off</button>
+        </div>
       </div>
     </div>
   </body>

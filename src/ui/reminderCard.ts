@@ -192,7 +192,24 @@ export interface PomodoroCardHandle {
 }
 
 const FOCUS_CHOICES_MIN = [25, 55] as const;
-const BREAK_CHOICES_MIN = [5, 15] as const;
+const SHORT_BREAK_CHOICES_MIN = [5, 10] as const;
+const LONG_BREAK_CHOICES_MIN = [15, 20] as const;
+
+/**
+ * Snaps a stored value to whichever offered choice is numerically closest —
+ * ties favor the smaller/first choice. Exists because the break picker's
+ * choice set changed (a single 5|15 picker split into short 5|10 and long
+ * 15|20 — see mountPomodoroCard below): a settings.json written before that
+ * split can hold a `breakMs` of 15 min, which isn't a valid *short* break
+ * choice anymore. Without this, `buildChoiceField.set()` would highlight
+ * nothing and every subsequent commit would silently keep writing back the
+ * now-invalid 15.
+ */
+export function nearestChoice<T extends number>(choices: readonly T[], value: number): T {
+  return choices.reduce((closest, choice) =>
+    Math.abs(choice - value) < Math.abs(closest - value) ? choice : closest,
+  );
+}
 
 function buildChoiceField<T extends number>(
   labelText: string,
@@ -230,7 +247,7 @@ function buildChoiceField<T extends number>(
   return { el: label, get: () => current, set: (value: T) => { current = value; sync(); } };
 }
 
-/** Pomodoro's card: enable, 25|55 focus choice, 5|15 break choice, attention-grabber style. No single interval — it alternates. */
+/** Pomodoro's card: enable, 25|55 focus choice, 5|10 short break choice, 15|20 long break choice, attention-grabber style. No single interval — it alternates, and the takeover lets the user pick short vs. long each time a focus session ends. */
 export function mountPomodoroCard(
   container: HTMLElement,
   initial: PomodoroSettings,
@@ -253,7 +270,18 @@ export function mountPomodoroCard(
   body.className = "settings-card-body";
 
   const focus = buildChoiceField("Focus session", FOCUS_CHOICES_MIN, (initial.focusMs / 60_000) as 25 | 55, onChange);
-  const rest = buildChoiceField("Break", BREAK_CHOICES_MIN, (initial.breakMs / 60_000) as 5 | 15, onChange);
+  const shortBreak = buildChoiceField(
+    "Short break",
+    SHORT_BREAK_CHOICES_MIN,
+    nearestChoice(SHORT_BREAK_CHOICES_MIN, initial.breakMs / 60_000),
+    onChange,
+  );
+  const longBreak = buildChoiceField(
+    "Long break",
+    LONG_BREAK_CHOICES_MIN,
+    nearestChoice(LONG_BREAK_CHOICES_MIN, initial.longBreakMs / 60_000),
+    onChange,
+  );
 
   const alertLabel = document.createElement("div");
   alertLabel.className = "settings-field";
@@ -261,7 +289,7 @@ export function mountPomodoroCard(
   const segmented = buildSegmented(ALERT_STYLES, initial.alertStyle, ALERT_STYLE_LABELS, onChange);
   alertLabel.append(segmented.el);
 
-  body.append(focus.el, rest.el, alertLabel);
+  body.append(focus.el, shortBreak.el, longBreak.el, alertLabel);
   details.append(summary, body);
   container.append(details);
 
@@ -275,14 +303,16 @@ export function mountPomodoroCard(
       return {
         enabled: enableSwitch.get(),
         focusMs: focus.get() * 60_000,
-        breakMs: rest.get() * 60_000,
+        breakMs: shortBreak.get() * 60_000,
+        longBreakMs: longBreak.get() * 60_000,
         alertStyle: segmented.get(),
       };
     },
     setValue(value: PomodoroSettings) {
       enableSwitch.set(value.enabled);
       focus.set((value.focusMs / 60_000) as 25 | 55);
-      rest.set((value.breakMs / 60_000) as 5 | 15);
+      shortBreak.set(nearestChoice(SHORT_BREAK_CHOICES_MIN, value.breakMs / 60_000));
+      longBreak.set(nearestChoice(LONG_BREAK_CHOICES_MIN, value.longBreakMs / 60_000));
       segmented.set(value.alertStyle);
       syncEnabledState();
     },

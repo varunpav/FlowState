@@ -34,6 +34,20 @@ describe("parseSettings", () => {
     }
   });
 
+  it("rejects a pomodoro.longBreakMs below the 60s floor with a path-qualified message", () => {
+    const bad = {
+      ...DEFAULT_SETTINGS,
+      pomodoro: { ...DEFAULT_SETTINGS.pomodoro, longBreakMs: 500 },
+    };
+    const result = parseSettings(bad);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues).toEqual(
+        expect.arrayContaining([expect.stringContaining("pomodoro.longBreakMs must be >= 60000")]),
+      );
+    }
+  });
+
   it("rejects an invalid pomodoro alertStyle with a path-qualified message", () => {
     const bad = {
       ...DEFAULT_SETTINGS,
@@ -187,6 +201,19 @@ describe("withDefaults", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.idlePause).toEqual(DEFAULT_SETTINGS.idlePause);
+    }
+  });
+
+  it("fills pomodoro.longBreakMs with the default when reading a settings file written before that field existed", () => {
+    const { longBreakMs: _omitted, ...legacyPomodoro } = DEFAULT_SETTINGS.pomodoro;
+    const stored = { ...DEFAULT_SETTINGS, pomodoro: legacyPomodoro };
+
+    const merged = withDefaults(stored);
+    const result = parseSettings(merged);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.pomodoro).toEqual(DEFAULT_SETTINGS.pomodoro);
     }
   });
 

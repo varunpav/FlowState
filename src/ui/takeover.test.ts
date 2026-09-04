@@ -54,10 +54,19 @@ function buildElements(): TakeoverElements {
     waterEntryContainerEl: document.createElement("div"),
     confirmRowEl: document.createElement("div"),
     confirmBtn: document.createElement("button"),
+    breakChoiceRowEl: document.createElement("div"),
+    shortBreakBtn: document.createElement("button"),
+    longBreakBtn: document.createElement("button"),
     skipRowEl: document.createElement("div"),
     skipBtn: document.createElement("button"),
     snoozeBtn: document.createElement("button"),
     snoozeHintEl: document.createElement("p"),
+    turnOffRowEl: document.createElement("div"),
+    turnOffBtn: document.createElement("button"),
+    // DEBUG — debugSnoozeRowEl/debugSnoozeBtn commented out along with
+    // TakeoverElements' matching fields; un-comment together.
+    // debugSnoozeRowEl: document.createElement("div"),
+    // debugSnoozeBtn: document.createElement("button"),
   };
 }
 
@@ -84,6 +93,7 @@ function fixture(overrides: (settings: Settings) => void = () => {}) {
   const callbacks: TakeoverCallbacks = {
     onWaterLogged: vi.fn(),
     getPomodoroPhaseJustEnded: vi.fn(() => "break" as const),
+    onTurnOffReminder: vi.fn().mockResolvedValue(undefined),
   };
   const takeover = initTakeover(el, settings, chime, callbacks);
   return { el, settings, chime, callbacks, takeover };
@@ -135,9 +145,13 @@ describe("initTakeover — dismissing", () => {
     expect(el.overlayEl.hidden).toBe(true);
   });
 
-  it("Skip closes the takeover without logging any water", async () => {
-    const { el, callbacks, takeover } = fixture();
+  it("Done is visible on every hydration takeover, even without camera verification, and closes without logging water", async () => {
+    const { el, callbacks, takeover } = fixture((s) => {
+      s.cv.enabled = false;
+    });
     takeover.show("hydration");
+
+    expect(el.skipRowEl.hidden).toBe(false);
 
     el.skipBtn.click();
     await flush();
@@ -145,6 +159,12 @@ describe("initTakeover — dismissing", () => {
     expect(callbacks.onWaterLogged).not.toHaveBeenCalled();
     expect(releaseTakeover).toHaveBeenCalledTimes(1);
     expect(el.overlayEl.hidden).toBe(true);
+  });
+
+  it("Done stays hidden for non-hydration kinds", () => {
+    const { el, takeover } = fixture();
+    takeover.show("eyeBreak");
+    expect(el.skipRowEl.hidden).toBe(true);
   });
 
   it("a non-hydration takeover confirms through the single Done button", async () => {
@@ -247,22 +267,203 @@ describe("initTakeover — snooze", () => {
     expect(setRemainingMs).toHaveBeenCalledTimes(1); // unchanged — Escape was inert
     expect(el.overlayEl.hidden).toBe(false); // still up, awaiting a real confirm
   });
+
+  // DEBUG — commented out along with takeover.ts's debugSnoozeBtn wiring;
+  // un-comment together (also needs buildElements()'s debugSnoozeRowEl/
+  // debugSnoozeBtn re-added above).
+  /*
+  it("DEBUG: the 5s snooze shortcut only ever shows for hydration", () => {
+    const { el, takeover } = fixture();
+
+    takeover.show("hydration");
+    expect(el.debugSnoozeRowEl.hidden).toBe(false);
+
+    takeover.show("eyeBreak");
+    expect(el.debugSnoozeRowEl.hidden).toBe(true);
+  });
+
+  it("DEBUG: clicking the 5s snooze shortcut arms a 5s budget, closes, and counts as a real snooze", async () => {
+    const { el, takeover } = fixture((s) => {
+      s.maxSnoozes = 1;
+    });
+    takeover.show("hydration");
+
+    el.debugSnoozeBtn.click();
+    await flush();
+
+    expect(setRemainingMs).toHaveBeenCalledWith("hydration", 5_000);
+    expect(releaseTakeover).toHaveBeenCalledTimes(1);
+    expect(el.overlayEl.hidden).toBe(true);
+
+    takeover.show("hydration");
+    // It's a real snooze under the hood, just shorter — so it counts toward
+    // maxSnoozes (here already exhausted after one use)...
+    expect(el.snoozeBtn.disabled).toBe(true);
+    // ...and correctly reveals hydration's Turn off, the whole reason this
+    // needs to share doSnooze with the real button rather than bypass it.
+    expect(el.turnOffRowEl.hidden).toBe(false);
+  });
+  */
+});
+
+describe("initTakeover — turn off", () => {
+  it("offers Turn off immediately for pomodoro, eye break, and stand up", () => {
+    const { el, takeover } = fixture();
+
+    for (const kind of ["pomodoro", "eyeBreak", "standUp"] as const) {
+      takeover.show(kind);
+      expect(el.turnOffRowEl.hidden).toBe(false);
+    }
+  });
+
+  it("hides Turn off for hydration until it has been snoozed once, then offers it on the next takeover", async () => {
+    const { el, takeover } = fixture();
+
+    takeover.show("hydration");
+    expect(el.turnOffRowEl.hidden).toBe(true);
+
+    el.snoozeBtn.click();
+    await flush();
+
+    takeover.show("hydration");
+    expect(el.turnOffRowEl.hidden).toBe(false);
+  });
+
+  it("a real confirm resets hydration's snooze count, hiding Turn off again on the next takeover", async () => {
+    const { el, takeover } = fixture();
+
+    takeover.show("hydration");
+    el.snoozeBtn.click();
+    await flush();
+
+    takeover.show("hydration");
+    expect(el.turnOffRowEl.hidden).toBe(false);
+
+    // Skip shares confirm()'s exact release/reset/hide mechanics — hydration
+    // has no confirmBtn of its own to click (that row stays hidden for it).
+    el.skipBtn.click();
+    await flush();
+
+    takeover.show("hydration");
+    expect(el.turnOffRowEl.hidden).toBe(true);
+  });
+
+  it("clicking Turn off disables the reminder via the callback, then releases and hides", async () => {
+    const { el, callbacks, takeover } = fixture();
+    takeover.show("eyeBreak");
+
+    el.turnOffBtn.click();
+    await flush();
+
+    expect(callbacks.onTurnOffReminder).toHaveBeenCalledWith("eyeBreak");
+    expect(releaseTakeover).toHaveBeenCalledTimes(1);
+    expect(el.overlayEl.hidden).toBe(true);
+  });
+
+  it("disables the reminder before releasing the takeover, not after", async () => {
+    // Rust's decrement loop is gated on `active` still being set — if
+    // release ran first, the just-disabled kind's cleared budget could get
+    // clobbered by a tick landing in between.
+    const order: string[] = [];
+    const { el, callbacks, takeover } = fixture();
+    vi.mocked(callbacks.onTurnOffReminder).mockImplementation(async () => {
+      order.push("turnOff");
+    });
+    vi.mocked(releaseTakeover).mockImplementation(async () => {
+      order.push("release");
+    });
+    takeover.show("standUp");
+
+    el.turnOffBtn.click();
+    await flush();
+
+    expect(order).toEqual(["turnOff", "release"]);
+  });
+});
+
+describe("initTakeover — pomodoro break choice", () => {
+  it("a focus-end takeover shows short/long break buttons labeled with the configured durations, not the single confirm", () => {
+    const { el, callbacks, takeover } = fixture((s) => {
+      s.pomodoro.breakMs = 5 * 60_000;
+      s.pomodoro.longBreakMs = 15 * 60_000;
+    });
+    vi.mocked(callbacks.getPomodoroPhaseJustEnded).mockReturnValue("focus");
+
+    takeover.show("pomodoro");
+
+    expect(el.breakChoiceRowEl.hidden).toBe(false);
+    expect(el.confirmRowEl.hidden).toBe(true);
+    expect(el.shortBreakBtn.textContent).toBe("Short break · 5 min");
+    expect(el.longBreakBtn.textContent).toBe("Long break · 15 min");
+  });
+
+  it("a break-end takeover still shows the single confirm button, not the break choice", () => {
+    const { el, callbacks, takeover } = fixture();
+    vi.mocked(callbacks.getPomodoroPhaseJustEnded).mockReturnValue("break");
+
+    takeover.show("pomodoro");
+
+    expect(el.breakChoiceRowEl.hidden).toBe(true);
+    expect(el.confirmRowEl.hidden).toBe(false);
+    expect(el.confirmBtn.textContent).toBe("Back to focus");
+  });
+
+  it("Short break overwrites the pre-armed budget with the short break length and closes", async () => {
+    const { el, callbacks, takeover } = fixture((s) => {
+      s.pomodoro.breakMs = 5 * 60_000;
+    });
+    vi.mocked(callbacks.getPomodoroPhaseJustEnded).mockReturnValue("focus");
+    takeover.show("pomodoro");
+
+    el.shortBreakBtn.click();
+    await flush();
+
+    expect(setRemainingMs).toHaveBeenCalledWith("pomodoro", 5 * 60_000);
+    expect(releaseTakeover).toHaveBeenCalledTimes(1);
+    expect(el.overlayEl.hidden).toBe(true);
+  });
+
+  it("Long break overwrites the pre-armed budget with the long break length and closes", async () => {
+    const { el, callbacks, takeover } = fixture((s) => {
+      s.pomodoro.longBreakMs = 15 * 60_000;
+    });
+    vi.mocked(callbacks.getPomodoroPhaseJustEnded).mockReturnValue("focus");
+    takeover.show("pomodoro");
+
+    el.longBreakBtn.click();
+    await flush();
+
+    expect(setRemainingMs).toHaveBeenCalledWith("pomodoro", 15 * 60_000);
+    expect(releaseTakeover).toHaveBeenCalledTimes(1);
+    expect(el.overlayEl.hidden).toBe(true);
+  });
+
+  it("the break-choice row never leaks into a different kind's takeover", () => {
+    const { el, callbacks, takeover } = fixture();
+    vi.mocked(callbacks.getPomodoroPhaseJustEnded).mockReturnValue("focus");
+    takeover.show("pomodoro");
+    expect(el.breakChoiceRowEl.hidden).toBe(false);
+
+    takeover.show("eyeBreak");
+    expect(el.breakChoiceRowEl.hidden).toBe(true);
+    expect(el.confirmRowEl.hidden).toBe(false);
+  });
 });
 
 describe("initTakeover — camera verification", () => {
-  it("hides the camera pane and Skip entirely when verification is off", () => {
+  it("hides the camera pane when verification is off, but Done stays visible", () => {
     const { el, takeover } = fixture((s) => {
       s.cv.enabled = false;
     });
     takeover.show("hydration");
 
     expect(el.cvPaneEl.hidden).toBe(true);
-    expect(el.skipRowEl.hidden).toBe(true);
+    expect(el.skipRowEl.hidden).toBe(false);
     expect(el.waterEntryContainerEl.hidden).toBe(false);
     expect(cvStart).not.toHaveBeenCalled();
   });
 
-  it("locks water entry behind the camera pane while watching", async () => {
+  it("keeps Done available (alongside the now-locked water entry) while the camera watches", async () => {
     const { el, takeover } = fixture((s) => {
       s.cv.enabled = true;
     });
@@ -275,7 +476,7 @@ describe("initTakeover — camera verification", () => {
     expect(el.cvPaneEl.hidden).toBe(false);
     expect(el.skipRowEl.hidden).toBe(false);
     // Hidden rather than merely disabled — a greyed-out Add beside an active
-    // Skip read as a second, redundant dismiss action.
+    // Done read as a second, redundant dismiss action.
     expect(el.waterEntryContainerEl.hidden).toBe(true);
   });
 

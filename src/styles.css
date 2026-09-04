@@ -651,6 +651,24 @@ h1 {
   background-color: var(--blue-dark);
 }
 
+/* .takeover-card sets align-items: center (not the default stretch), so a
+   row inside it shrink-wraps to its own content instead of spanning the
+   card — meaning `flex: 1` on this row's buttons had no real free space to
+   split evenly, and nothing stopped the longer "Short break · N min" /
+   "Long break · N min" labels from wrapping onto a second line unevenly.
+   A fixed width (not a percentage — the card has no definite width of its
+   own to resolve one against) gives the row real room, so the two buttons
+   come out genuinely equal-width, and nowrap keeps each label on one line
+   regardless of exactly which minute values are configured. */
+#takeover-break-choice-row {
+  width: 28em;
+}
+
+#takeover-break-choice-row button {
+  flex: 1;
+  white-space: nowrap;
+}
+
 .takeover-snooze[disabled] {
   opacity: 0.5;
   cursor: not-allowed;

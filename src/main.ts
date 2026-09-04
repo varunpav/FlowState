@@ -206,16 +206,52 @@ async function boot() {
       waterEntryContainerEl: document.querySelector("#takeover-water-entry")!,
       confirmRowEl: document.querySelector("#takeover-confirm-row")!,
       confirmBtn: document.querySelector("#takeover-confirm")!,
+      breakChoiceRowEl: document.querySelector("#takeover-break-choice-row")!,
+      shortBreakBtn: document.querySelector("#takeover-short-break")!,
+      longBreakBtn: document.querySelector("#takeover-long-break")!,
       skipRowEl: document.querySelector("#takeover-skip-row")!,
       skipBtn: document.querySelector("#takeover-skip")!,
       snoozeBtn: document.querySelector("#takeover-snooze")!,
       snoozeHintEl: document.querySelector("#takeover-snooze-hint")!,
+      turnOffRowEl: document.querySelector("#takeover-turn-off-row")!,
+      turnOffBtn: document.querySelector("#takeover-turn-off")!,
+      // DEBUG — temporary, commented out. See the matching commented-out
+      // fields/wiring in takeover.ts and the row in index.html.
+      // debugSnoozeRowEl: document.querySelector("#takeover-debug-snooze-row")!,
+      // debugSnoozeBtn: document.querySelector("#takeover-debug-snooze")!,
     },
     settings,
     chime,
     {
       onWaterLogged: handleWaterLogged,
       getPomodoroPhaseJustEnded: () => (pomodoroState.phase === "focus" ? "break" : "focus"),
+      // Mirrors the Settings-panel commit flow below almost exactly: mutate
+      // the shared settings object, persist, re-sync Rust's reminder configs
+      // and disarm the now-disabled kind's pre-armed budget, then repaint.
+      // settingsPanel isn't constructed until later in boot() — safe to
+      // reference here anyway, since this closure only runs after boot()
+      // has finished (same pattern homeView's onIntervalChanged already
+      // relies on below).
+      // Caught locally (rather than left to reject) so a failure here can
+      // never strand the takeover open forever — takeover.ts awaits this
+      // and only then calls confirm() to release/hide. Every other
+      // multi-step async action in this file (onStartTimer, onPauseToggle,
+      // onSettingsChanged below) reports its own failures the same way.
+      onTurnOffReminder: async (kind) => {
+        try {
+          if (kind === "pomodoro") settings.pomodoro.enabled = false;
+          else settings.reminders[kind].enabled = false;
+          await saveSettings(settings);
+          settingsPanel.refresh();
+          await setReminderConfigs(buildReminderConfigs(settings, pomodoroState));
+          const snapshot = (await getState()).reminders;
+          const reconciled = await applyReconcile(settings, snapshot);
+          lastSnapshot = reconciled ? (await getState()).reminders : snapshot;
+          renderTimerRow();
+        } catch (e) {
+          reportError("Turning off reminder", e);
+        }
+      },
     },
   );
 
@@ -367,7 +403,7 @@ async function boot() {
   document.querySelector<HTMLButtonElement>("#test-alert")!.addEventListener("click", () => {
     // Always hydration — an unpredictable "whatever's next-due" target
     // made this button confusing to use for its actual purpose.
-    void setRemainingMs("hydration", 10_000).catch((e) => reportError("Starting test alert", e));
+    void setRemainingMs("hydration", 5_000).catch((e) => reportError("Starting test alert", e));
   });
   document.querySelector<HTMLButtonElement>("#test-notification")!.addEventListener("click", () => {
     void (async () => {
@@ -380,6 +416,51 @@ async function boot() {
       }
     })().catch((e) => reportError("Sending test notification", e));
   });
+
+  // DEBUG — temporary manual-testing aid for the takeover UI (Turn off,
+  // Pomodoro's short/long break choice, etc.) without waiting out a real
+  // interval. Disabled for now — un-comment this block together with its
+  // matching <details> in index.html's Settings → Debug section to bring it
+  // back. Also re-add `type PomodoroPhase` to this file's
+  // `from "./core/pomodoro"` import (removed above so tsc's noUnusedLocals
+  // doesn't fail the build while this is commented out).
+  /*
+  // Pomodoro's phaseJustEnded (takeover.ts) is always the OPPOSITE of
+  // whatever pomodoroState.phase ends up as after advancePomodoro runs on
+  // fire — so forcing the phase to `phase` here, then arming, reliably
+  // fires the "`phase` just ended" takeover regardless of whichever phase
+  // Pomodoro actually last landed in. Without this, clicking "Pomodoro
+  // focus in 5s" a second time (after the first already advanced the state
+  // to "break") would silently test the break-end path instead.
+  function debugTriggerPomodoro(phase: PomodoroPhase) {
+    return () => {
+      void (async () => {
+        pomodoroState = { phase, completedBlocks: pomodoroState.completedBlocks };
+        await savePomodoroState(pomodoroState);
+        await setReminderConfigs(buildReminderConfigs(settings, pomodoroState));
+        await setRemainingMs("pomodoro", 5_000);
+      })().catch((e) => reportError(`Starting debug trigger for pomodoro ${phase}`, e));
+    };
+  }
+  document
+    .querySelector<HTMLButtonElement>("#debug-trigger-pomodoro-focus")!
+    .addEventListener("click", debugTriggerPomodoro("focus"));
+  document
+    .querySelector<HTMLButtonElement>("#debug-trigger-pomodoro-break")!
+    .addEventListener("click", debugTriggerPomodoro("break"));
+
+  // Mirrors #test-alert exactly: arms the budget directly regardless of
+  // whether the kind is currently enabled, so whatever Attention grabber
+  // style is configured for it decides toast vs. takeover.
+  for (const [id, kind] of [
+    ["#debug-trigger-standup", "standUp"],
+    ["#debug-trigger-eyebreak", "eyeBreak"],
+  ] as const) {
+    document.querySelector<HTMLButtonElement>(id)!.addEventListener("click", () => {
+      void setRemainingMs(kind, 5_000).catch((e) => reportError(`Starting debug trigger for ${kind}`, e));
+    });
+  }
+  */
 
   const settingsPanel = initSettingsPanel(
     {

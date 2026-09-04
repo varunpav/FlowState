@@ -10,7 +10,9 @@ export interface ReminderSettings {
 export interface PomodoroSettings {
   enabled: boolean;
   focusMs: number;
+  /** The short break — offered on the takeover alongside `longBreakMs` whenever a focus session ends. */
   breakMs: number;
+  longBreakMs: number;
   alertStyle: AlertStyle;
 }
 
@@ -57,7 +59,13 @@ export const DEFAULT_SETTINGS: Settings = {
     eyeBreak: { enabled: false, intervalMs: 20 * 60 * 1000, alertStyle: "notify" },
     standUp: { enabled: false, intervalMs: 60 * 60 * 1000, alertStyle: "notify" },
   },
-  pomodoro: { enabled: false, focusMs: 25 * 60 * 1000, breakMs: 5 * 60 * 1000, alertStyle: "takeover" },
+  pomodoro: {
+    enabled: false,
+    focusMs: 25 * 60 * 1000,
+    breakMs: 5 * 60 * 1000,
+    longBreakMs: 15 * 60 * 1000,
+    alertStyle: "takeover",
+  },
   water: { bottleOz: 24, dailyGoalOz: 128 },
   idlePause: { enabled: true, thresholdSeconds: INACTIVITY_THRESHOLD_SECONDS },
   cv: { enabled: false },
@@ -202,11 +210,18 @@ function parsePomodoro(obj: Record<string, unknown>, issues: string[]): Pomodoro
   const enabled = bool(raw, path, "enabled", issues);
   const focusMs = num(raw, path, "focusMs", issues, { min: 60_000 });
   const breakMs = num(raw, path, "breakMs", issues, { min: 60_000 });
+  const longBreakMs = num(raw, path, "longBreakMs", issues, { min: 60_000 });
   const alertStyle = oneOf(raw, path, "alertStyle", ALERT_STYLES, issues);
-  if (enabled === undefined || focusMs === undefined || breakMs === undefined || alertStyle === undefined) {
+  if (
+    enabled === undefined ||
+    focusMs === undefined ||
+    breakMs === undefined ||
+    longBreakMs === undefined ||
+    alertStyle === undefined
+  ) {
     return undefined;
   }
-  return { enabled, focusMs, breakMs, alertStyle };
+  return { enabled, focusMs, breakMs, longBreakMs, alertStyle };
 }
 
 function parseWater(obj: Record<string, unknown>, issues: string[]): WaterSettings | undefined {

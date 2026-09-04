@@ -1,14 +1,14 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PomodoroSettings, ReminderSettings } from "../core/settings";
-import { mountPomodoroCard, mountReminderCard } from "./reminderCard";
+import { mountPomodoroCard, mountReminderCard, nearestChoice } from "./reminderCard";
 
 function reminderDefaults(): ReminderSettings {
   return { enabled: true, intervalMs: 120 * 60_000, alertStyle: "takeover" };
 }
 
 function pomodoroDefaults(): PomodoroSettings {
-  return { enabled: true, focusMs: 25 * 60_000, breakMs: 5 * 60_000, alertStyle: "takeover" };
+  return { enabled: true, focusMs: 25 * 60_000, breakMs: 5 * 60_000, longBreakMs: 15 * 60_000, alertStyle: "takeover" };
 }
 
 beforeEach(() => {
@@ -108,34 +108,38 @@ describe("mountReminderCard", () => {
 });
 
 describe("mountPomodoroCard", () => {
-  it("offers exactly the 25/55 focus and 5/15 break choices, defaulting to the initial value", () => {
+  it("offers exactly the 25/55 focus, 5/10 short break, and 15/20 long break choices, defaulting to the initial value", () => {
     const container = document.createElement("div");
     mountPomodoroCard(container, pomodoroDefaults());
 
     const labels = Array.from(container.querySelectorAll("button")).map((b) => b.textContent);
     expect(labels).toEqual(
-      expect.arrayContaining(["25 min", "55 min", "5 min", "15 min", "Full screen", "Notification"]),
+      expect.arrayContaining(["25 min", "55 min", "5 min", "10 min", "15 min", "20 min", "Full screen", "Notification"]),
     );
 
     const active = container.querySelectorAll(".segmented-active");
     const activeLabels = Array.from(active).map((b) => b.textContent);
     expect(activeLabels).toContain("25 min");
-    expect(activeLabels).toContain("5 min");
+    expect(activeLabels).toContain("5 min"); // short break, from pomodoroDefaults()'s breakMs
+    expect(activeLabels).toContain("15 min"); // long break, from pomodoroDefaults()'s longBreakMs
   });
 
-  it("getValue reflects picking a different focus/break combination", () => {
+  it("getValue reflects picking a different focus/short-break/long-break combination", () => {
     const container = document.createElement("div");
     const card = mountPomodoroCard(container, pomodoroDefaults());
 
     const fiftyFive = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "55 min")!;
     fiftyFive.click();
-    const fifteen = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "15 min")!;
-    fifteen.click();
+    const ten = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "10 min")!;
+    ten.click();
+    const twenty = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "20 min")!;
+    twenty.click();
 
     expect(card.getValue()).toEqual({
       enabled: true,
       focusMs: 55 * 60_000,
-      breakMs: 15 * 60_000,
+      breakMs: 10 * 60_000,
+      longBreakMs: 20 * 60_000,
       alertStyle: "takeover",
     });
   });
@@ -144,15 +148,45 @@ describe("mountPomodoroCard", () => {
     const container = document.createElement("div");
     const card = mountPomodoroCard(container, pomodoroDefaults());
 
-    const next: PomodoroSettings = { enabled: false, focusMs: 55 * 60_000, breakMs: 15 * 60_000, alertStyle: "notify" };
+    const next: PomodoroSettings = {
+      enabled: false,
+      focusMs: 55 * 60_000,
+      breakMs: 10 * 60_000,
+      longBreakMs: 20 * 60_000,
+      alertStyle: "notify",
+    };
     card.setValue(next);
 
     expect(card.getValue()).toEqual(next);
+  });
+
+  it("snaps a legacy 15-minute short break (from before the short/long split) to the nearest short-break choice", () => {
+    const container = document.createElement("div");
+    // Pre-split settings.json could hold breakMs: 15 min, which is no longer
+    // a valid *short* break choice (short is now 5|10) — the card must still
+    // mount with something highlighted, not silently show no active button.
+    const legacy: PomodoroSettings = { ...pomodoroDefaults(), breakMs: 15 * 60_000 };
+    const card = mountPomodoroCard(container, legacy);
+
+    const active = container.querySelectorAll(".segmented-active");
+    const activeLabels = Array.from(active).map((b) => b.textContent);
+    expect(activeLabels).toContain("10 min"); // nearest of [5, 10] to 15
+    expect(card.getValue().breakMs).toBe(10 * 60_000);
   });
 
   it("is labeled Pomodoro regardless of the settings passed in", () => {
     const container = document.createElement("div");
     mountPomodoroCard(container, pomodoroDefaults());
     expect(container.querySelector("summary")?.textContent).toContain("Pomodoro");
+  });
+});
+
+describe("nearestChoice", () => {
+  it("picks the closest offered choice, favoring the smaller one on an exact tie", () => {
+    expect(nearestChoice([5, 10] as const, 5)).toBe(5);
+    expect(nearestChoice([5, 10] as const, 10)).toBe(10);
+    expect(nearestChoice([5, 10] as const, 15)).toBe(10); // 15 is closer to 10 than to 5
+    expect(nearestChoice([5, 10] as const, 7.5)).toBe(5); // exact tie — reduce() keeps the first/smaller
+    expect(nearestChoice([15, 20] as const, 5)).toBe(15);
   });
 });
